@@ -4,6 +4,7 @@ import Image from "next/image";
 import {
   Camera,
   Check,
+  FlipHorizontal2,
   ImagePlus,
   LoaderCircle,
   X,
@@ -44,6 +45,7 @@ export function InstantComposer() {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [cameraDeviceIds, setCameraDeviceIds] = useState<string[]>([]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -101,24 +103,81 @@ export function InstantComposer() {
     const requestId = ++cameraRequestId.current;
     setCameraStarting(true);
     try {
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: "environment" } },
-        });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: true,
-        });
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: "environment" } },
+      });
 
       if (requestId !== cameraRequestId.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setCameraDeviceIds(
+          devices
+            .filter((device) => device.kind === "videoinput")
+            .map((device) => device.deviceId)
+            .filter(Boolean),
+        );
+      } catch {
+        setCameraDeviceIds([]);
+      }
+      if (requestId !== cameraRequestId.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       setCameraStream(stream);
+    } catch (cause) {
+      if (requestId === cameraRequestId.current) {
+        setCameraError(getCameraError(cause));
+      }
+    } finally {
+      if (requestId === cameraRequestId.current) {
+        setCameraStarting(false);
+      }
+    }
+  };
+
+  const flipCamera = async () => {
+    if (!cameraStream || cameraStarting) return;
+
+    const requestId = ++cameraRequestId.current;
+    const currentTrack = cameraStream.getVideoTracks()[0];
+    const currentDeviceId = currentTrack?.getSettings().deviceId;
+    let devices: MediaDeviceInfo[];
+    try {
+      devices = await navigator.mediaDevices.enumerateDevices();
+    } catch (cause) {
+      setCameraError(getCameraError(cause));
+      return;
+    }
+    const videoDevices = devices.filter(
+      (device) => device.kind === "videoinput" && device.deviceId,
+    );
+    setCameraDeviceIds(videoDevices.map((device) => device.deviceId));
+
+    const currentIndex = videoDevices.findIndex(
+      (device) => device.deviceId === currentDeviceId,
+    );
+    if (videoDevices.length < 2 || currentIndex < 0) {
+      setCameraError("A second camera is not available on this device.");
+      return;
+    }
+
+    setCameraStarting(true);
+    setCameraError("");
+    try {
+      const nextDevice = videoDevices[(currentIndex + 1) % videoDevices.length];
+      const nextStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { deviceId: { exact: nextDevice.deviceId } },
+      });
+      if (requestId !== cameraRequestId.current) {
+        nextStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      setCameraStream(nextStream);
     } catch (cause) {
       if (requestId === cameraRequestId.current) {
         setCameraError(getCameraError(cause));
@@ -279,6 +338,26 @@ export function InstantComposer() {
                   playsInline
                   ref={videoRef}
                 />
+                {cameraDeviceIds.length > 1 && (
+                  <Button
+                    aria-label="Switch camera"
+                    className="absolute left-3 top-3 rounded-full bg-background/90 shadow-sm hover:bg-background"
+                    disabled={cameraStarting}
+                    onClick={() => void flipCamera()}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    {cameraStarting ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="size-4 animate-spin"
+                      />
+                    ) : (
+                      <FlipHorizontal2 aria-hidden="true" className="size-4" />
+                    )}
+                  </Button>
+                )}
                 <button
                   aria-label="Close camera"
                   className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background"
@@ -291,6 +370,7 @@ export function InstantComposer() {
                   aria-label="Capture photo"
                   className="absolute bottom-4 left-1/2 size-12 -translate-x-1/2 rounded-full"
                   onClick={() => void capturePhoto()}
+                  disabled={cameraStarting}
                   size="icon"
                   type="button"
                 >
