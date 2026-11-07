@@ -31,7 +31,7 @@ The current application foundation includes:
 - Feature-scoped Zustand stores for shared Instant and notification UI
   state, with a centralized Axios client and feature API modules. Form
   state remains local; authentication and authorization stay server-side.
-- A dedicated `/auth` route and protected workspace routes for `/instants`,
+- A dedicated `/auth` route and protected workspace routes for `/create`,
   `/connections`, `/profile`, `/notifications`, and `/settings`. The root
   route opens the Instants feed for signed-in users. The Proxy redirects
   requests without a session cookie, and the workspace server layout

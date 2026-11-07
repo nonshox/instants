@@ -25,7 +25,7 @@ import { getApiErrorMessage } from "@/src/lib/api-client";
 const navigationGroups = [
   [
     { label: "Following", href: "/", icon: Images },
-    { label: "Create an Instant", href: "/instant", icon: ImagePlus },
+    { label: "Create an Instant", href: "/create", icon: ImagePlus },
     { label: "Connections", href: "/connections", icon: UsersRound },
     { label: "Notifications", href: "/notifications", icon: Bell },
   ],
@@ -42,6 +42,7 @@ export function WorkspaceShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
 
@@ -99,7 +100,7 @@ export function WorkspaceShell({
               <span>Mono</span>
             </Link>
           </div>
-          <Menu.Root>
+          <Menu.Root onOpenChange={setMenuOpen} open={menuOpen}>
             <Menu.Trigger
               aria-label="Open menu"
               render={
@@ -128,6 +129,7 @@ export function WorkspaceShell({
                                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
                             }`}
                             key={item.href}
+                            onClick={() => setMenuOpen(false)}
                             render={<Link href={item.href} />}
                           >
                             <Icon aria-hidden="true" className="size-4" />

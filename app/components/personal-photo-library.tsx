@@ -195,7 +195,7 @@ export function PersonalPhotoLibrary({ accountId }: { accountId: string }) {
           {photos.length === 0 && (
             <Button
               nativeButton={false}
-              render={<Link href="/instant" />}
+              render={<Link href="/create" />}
               variant="outline"
             >
               Create an Instant

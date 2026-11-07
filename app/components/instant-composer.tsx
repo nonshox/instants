@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import {
+  Camera,
   Check,
   ImagePlus,
   LoaderCircle,
@@ -32,12 +33,36 @@ export function InstantComposer() {
     (state) => state.clearUploadMessage,
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraRequestId = useRef(0);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<{ file: File; url: string } | null>(
     null,
   );
   const [caption, setCaption] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!cameraStream || !video) return;
+
+    video.srcObject = cameraStream;
+    void video.play().catch(() => {
+      setCameraError("The camera preview could not start. Check camera permissions.");
+    });
+
+    return () => {
+      video.srcObject = null;
+      cameraStream.getTracks().forEach((track) => track.stop());
+    };
+  }, [cameraStream]);
+
+  useEffect(() => () => {
+    cameraRequestId.current += 1;
+  }, []);
 
   useEffect(() => {
     if (!file) return;
@@ -54,12 +79,98 @@ export function InstantComposer() {
   }, [file]);
 
   const chooseFile = (nextFile: File | null) => {
+    setCameraStream(null);
+    setCameraError("");
     setFile(nextFile);
     clearUploadMessage();
   };
 
   const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     chooseFile(event.target.files?.[0] ?? null);
+  };
+
+  const openCamera = async () => {
+    setCameraError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError(
+        "Camera access is unavailable in this browser. Choose a photo instead.",
+      );
+      return;
+    }
+
+    const requestId = ++cameraRequestId.current;
+    setCameraStarting(true);
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: "environment" } },
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: true,
+        });
+      }
+
+      if (requestId !== cameraRequestId.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      setCameraStream(stream);
+    } catch (cause) {
+      if (requestId === cameraRequestId.current) {
+        setCameraError(getCameraError(cause));
+      }
+    } finally {
+      if (requestId === cameraRequestId.current) {
+        setCameraStarting(false);
+      }
+    }
+  };
+
+  const closeCamera = () => {
+    cameraRequestId.current += 1;
+    setCameraStarting(false);
+    setCameraStream(null);
+    setCameraError("");
+  };
+
+  const capturePhoto = async () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setCameraError("The camera is not ready yet. Please try again.");
+      return;
+    }
+
+    const scale = Math.min(
+      1,
+      1920 / Math.max(video.videoWidth, video.videoHeight),
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setCameraError("The photo could not be captured. Please try again.");
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.85),
+    );
+    if (!blob || blob.size > MAX_IMAGE_BYTES) {
+      setCameraError(
+        blob
+          ? "This photo is larger than 10 MB. Try moving closer or use a smaller image."
+          : "The photo could not be captured. Please try again.",
+      );
+      return;
+    }
+
+    chooseFile(new File([blob], `instant-${Date.now()}.jpg`, { type: blob.type }));
   };
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -115,7 +226,7 @@ export function InstantComposer() {
         <div className="grid content-start gap-3">
           <div
             className={`relative mx-auto flex aspect-square w-full max-w-[28rem] items-center justify-center overflow-hidden rounded-xl transition-colors ${
-              previewUrl
+              previewUrl || cameraStream
                 ? "bg-muted"
                 : dragging
                   ? "border-2 border-primary/40 bg-muted"
@@ -158,6 +269,47 @@ export function InstantComposer() {
                   <X aria-hidden="true" className="size-4" />
                 </button>
               </>
+            ) : cameraStream ? (
+              <>
+                <video
+                  aria-label="Live camera preview"
+                  autoPlay
+                  className="size-full object-cover"
+                  muted
+                  playsInline
+                  ref={videoRef}
+                />
+                <button
+                  aria-label="Close camera"
+                  className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background"
+                  onClick={closeCamera}
+                  type="button"
+                >
+                  <X aria-hidden="true" className="size-4" />
+                </button>
+                <Button
+                  aria-label="Capture photo"
+                  className="absolute bottom-4 left-1/2 size-12 -translate-x-1/2 rounded-full"
+                  onClick={() => void capturePhoto()}
+                  size="icon"
+                  type="button"
+                >
+                  <Camera aria-hidden="true" className="size-5" />
+                </Button>
+              </>
+            ) : cameraStarting ? (
+              <div className="grid justify-items-center gap-3 px-5 text-center">
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="size-6 animate-spin text-muted-foreground"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Starting your camera...
+                </p>
+                <Button onClick={closeCamera} type="button" variant="ghost">
+                  Cancel
+                </Button>
+              </div>
             ) : (
               <div className="grid justify-items-center gap-3 px-5 text-center">
                 <span className="grid size-12 place-items-center rounded-full bg-background text-muted-foreground">
@@ -169,13 +321,25 @@ export function InstantComposer() {
                     Drag and drop an image here
                   </p>
                 </div>
-                <Button
-                  onClick={() => inputRef.current?.click()}
-                  type="button"
-                  variant="outline"
-                >
-                  Choose from device
-                </Button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button
+                    onClick={() => inputRef.current?.click()}
+                    type="button"
+                    variant="outline"
+                  >
+                    <ImagePlus aria-hidden="true" />
+                    Choose photo
+                  </Button>
+                  <Button
+                    disabled={uploading}
+                    onClick={() => void openCamera()}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Camera aria-hidden="true" />
+                    Open camera
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -208,6 +372,11 @@ export function InstantComposer() {
           {file && !fileIsValid && (
             <p className="text-sm text-destructive" role="alert">
               Choose a JPEG, PNG, or WebP image smaller than 10 MB.
+            </p>
+          )}
+          {cameraError && (
+            <p className="text-sm text-destructive" role="alert">
+              {cameraError}
             </p>
           )}
         </div>
@@ -309,4 +478,19 @@ function formatFileSize(bytes: number): string {
     return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
   }
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+function getCameraError(cause: unknown): string {
+  if (cause instanceof DOMException) {
+    if (cause.name === "NotAllowedError" || cause.name === "SecurityError") {
+      return "Allow camera access for this site in your browser settings, then try again.";
+    }
+    if (cause.name === "NotFoundError") {
+      return "No camera was found. Choose a photo from your device instead.";
+    }
+    if (cause.name === "NotReadableError") {
+      return "The camera could not be opened. Check that it is connected and not in use by another app.";
+    }
+  }
+  return "The camera could not be opened. Check your browser permissions and try again.";
 }
