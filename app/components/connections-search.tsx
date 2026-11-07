@@ -2,6 +2,7 @@
 
 import { Ban, LoaderCircle, Search, UserRound } from "lucide-react";
 import type { FormEvent } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SocialProfile } from "@/src/features/social/client-api";
@@ -82,13 +83,20 @@ export function ConnectionsSearch({
       {profile && (
         <article className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl bg-muted/50 p-4">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-background text-muted-foreground">
+            <Link
+              aria-label={`Open @${profile.username}'s profile`}
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-background text-muted-foreground"
+              href={`/u/${encodeURIComponent(profile.username)}`}
+            >
               <UserRound aria-hidden="true" className="size-5" />
-            </span>
+            </Link>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">
+              <Link
+                className="block truncate text-sm font-medium hover:underline"
+                href={`/u/${encodeURIComponent(profile.username)}`}
+              >
                 {profile.name || `@${profile.username}`}
-              </p>
+              </Link>
               {profile.name && (
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   @{profile.username}

@@ -2,6 +2,7 @@ import { AccountExperience } from "@/app/components/account-experience";
 import { getCurrentAccountData } from "@/src/features/auth/session";
 import { SessionExpired } from "@/app/components/workspace-shell";
 import { Suspense } from "react";
+import { PrivacySettings } from "@/app/components/privacy-settings";
 
 export default function SettingsPage() {
   return (
@@ -24,9 +25,12 @@ async function AuthenticatedSettings() {
   }
 
   return (
-    <AccountExperience
-      email={accountData.user.email}
-      initialSessions={accountData.sessions}
-    />
+    <>
+      <AccountExperience
+        email={accountData.user.email}
+        initialSessions={accountData.sessions}
+      />
+      <PrivacySettings />
+    </>
   );
 }

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  blockedListSchema,
+  connectionListSchema,
   profileLookupSchema,
   relationshipInputSchema,
+  requestListSchema,
   requestDecisionSchema,
 } from "./schemas";
 import { canViewProfileDetails } from "./policy";
@@ -43,6 +46,15 @@ describe("social request inputs", () => {
         userId: "forged",
       }).success,
     ).toBe(false);
+  });
+
+  it("validates paginated relationship and request lists", () => {
+    expect(connectionListSchema.safeParse({ kind: "followers" }).success).toBe(true);
+    expect(connectionListSchema.safeParse({ kind: "unknown" }).success).toBe(false);
+    expect(requestListSchema.parse({}).direction).toBe("received");
+    expect(requestListSchema.parse({ direction: "sent", cursor: "row-1" }).direction)
+      .toBe("sent");
+    expect(blockedListSchema.safeParse({ cursor: "../invalid" }).success).toBe(false);
   });
 });
 

@@ -6,11 +6,37 @@ import {
   rejectForeignOrigin,
   socialFailure,
 } from "@/src/features/social/http";
-import { relationshipInputSchema } from "@/src/features/social/schemas";
+import {
+  blockedListSchema,
+  relationshipInputSchema,
+} from "@/src/features/social/schemas";
 import {
   blockByUsername,
+  listBlockedAccounts,
   unblockByUsername,
 } from "@/src/features/social/service";
+
+export async function GET(request: Request) {
+  const auth = await getSocialAccount();
+  if ("response" in auth) return auth.response;
+  if (!auth.account) {
+    return jsonError(401, "UNAUTHENTICATED", "Sign in to view blocked accounts.");
+  }
+  const params = new URL(request.url).searchParams;
+  const parsed = blockedListSchema.safeParse({
+    cursor: params.get("cursor") ?? undefined,
+  });
+  if (!parsed.success) {
+    return jsonError(400, "INVALID_INPUT", "The blocked list cursor is invalid.");
+  }
+  try {
+    return NextResponse.json(
+      await listBlockedAccounts(auth.account.$id, parsed.data.cursor ?? null),
+    );
+  } catch (error) {
+    return socialFailure("Blocked accounts list", error);
+  }
+}
 
 export async function POST(request: Request) {
   const originError = rejectForeignOrigin(request);

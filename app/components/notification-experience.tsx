@@ -2,6 +2,7 @@
 
 import { Bell, CheckCheck } from "lucide-react";
 import { useEffect } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -83,7 +84,12 @@ export function NotificationExperience() {
                     aria-hidden="true"
                   />
                   <p className="m-0 flex-1 text-xs leading-5">
-                    <strong>@{item.actorUsername}</strong>{" "}
+                    <Link
+                      className="font-semibold hover:underline"
+                      href={`/u/${encodeURIComponent(item.actorUsername)}`}
+                    >
+                      @{item.actorUsername}
+                    </Link>{" "}
                     {descriptions[item.type]}
                     <time
                       className="mt-1 block text-[10px] text-muted-foreground"

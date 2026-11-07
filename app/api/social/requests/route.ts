@@ -9,12 +9,16 @@ import {
 import {
   decideIncomingRequest,
   listIncomingRequests,
+  listOutgoingRequests,
 } from "@/src/features/social/service";
-import { requestDecisionSchema } from "@/src/features/social/schemas";
+import {
+  requestDecisionSchema,
+  requestListSchema,
+} from "@/src/features/social/schemas";
 
 export const maxDuration = 30;
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await getSocialAccount();
   if ("response" in auth) {
     return auth.response;
@@ -23,9 +27,26 @@ export async function GET() {
     return jsonError(401, "UNAUTHENTICATED", "Sign in to view requests.");
   }
 
+  const params = new URL(request.url).searchParams;
+  const parsed = requestListSchema.safeParse({
+    direction: params.get("direction") ?? "received",
+    cursor: params.get("cursor") ?? undefined,
+  });
+  if (!parsed.success) {
+    return jsonError(400, "INVALID_INPUT", "Choose a valid request list.");
+  }
+
   try {
-    const requests = await listIncomingRequests(auth.account.$id);
-    return NextResponse.json({ requests });
+    const page = parsed.data.direction === "sent"
+      ? await listOutgoingRequests(
+          auth.account.$id,
+          parsed.data.cursor ?? null,
+        )
+      : await listIncomingRequests(
+          auth.account.$id,
+          parsed.data.cursor ?? null,
+        );
+    return NextResponse.json(page);
   } catch (error) {
     return socialFailure("Incoming requests lookup", error);
   }

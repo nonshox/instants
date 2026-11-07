@@ -19,12 +19,46 @@ export type SocialProfile = {
 };
 
 export type FollowRequest = { username: string };
+export type ConnectionItem = {
+  username: string;
+  name?: string;
+  private?: boolean;
+  relationship?: "following" | "requested" | "not_following";
+};
+export type ConnectionPage = {
+  items: ConnectionItem[];
+  nextCursor: string | null;
+  count?: number;
+};
 
-export async function fetchFollowRequests(): Promise<FollowRequest[]> {
-  const { data } = await apiClient.get<{ requests: FollowRequest[] }>(
-    "/social/requests",
+export async function fetchConnections(
+  kind: "followers" | "following",
+  cursor: string | null = null,
+): Promise<ConnectionPage> {
+  const { data } = await apiClient.get<ConnectionPage>(
+    "/social/relationships",
+    { params: { kind, ...(cursor ? { cursor } : {}) } },
   );
-  return data.requests;
+  return data;
+}
+
+export async function fetchFollowRequests(
+  direction: "received" | "sent" = "received",
+  cursor: string | null = null,
+): Promise<ConnectionPage> {
+  const { data } = await apiClient.get<ConnectionPage>("/social/requests", {
+    params: { direction, ...(cursor ? { cursor } : {}) },
+  });
+  return data;
+}
+
+export async function fetchBlockedAccounts(
+  cursor: string | null = null,
+): Promise<ConnectionPage> {
+  const { data } = await apiClient.get<ConnectionPage>("/social/blocks", {
+    params: cursor ? { cursor } : undefined,
+  });
+  return data;
 }
 
 export async function searchSocialProfile(
@@ -40,10 +74,11 @@ export async function searchSocialProfile(
 export async function updateRelationship(
   username: string,
   remove: boolean,
+  direction?: "follower",
 ): Promise<Relationship | null> {
   if (remove) {
     await apiClient.delete("/social/relationships", {
-      params: { username },
+      params: { username, ...(direction ? { direction } : {}) },
     });
     return null;
   }
@@ -71,4 +106,10 @@ export async function updateBlock(
   }
   await apiClient.post("/social/blocks", { username });
   return null;
+}
+
+export async function removeIncomingFollower(username: string): Promise<void> {
+  await apiClient.delete("/social/relationships", {
+    params: { username, direction: "follower" },
+  });
 }

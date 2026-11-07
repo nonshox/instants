@@ -7,12 +7,44 @@ import {
   socialFailure,
 } from "@/src/features/social/http";
 import {
+  listConnections,
   followByUsername,
+  removeFollower,
   removeRelationship,
 } from "@/src/features/social/service";
-import { relationshipInputSchema } from "@/src/features/social/schemas";
+import {
+  connectionListSchema,
+  relationshipInputSchema,
+} from "@/src/features/social/schemas";
 
 export const maxDuration = 30;
+
+export async function GET(request: Request) {
+  const auth = await getSocialAccount();
+  if ("response" in auth) return auth.response;
+  if (!auth.account) {
+    return jsonError(401, "UNAUTHENTICATED", "Sign in to view connections.");
+  }
+  const params = new URL(request.url).searchParams;
+  const parsed = connectionListSchema.safeParse({
+    kind: params.get("kind"),
+    cursor: params.get("cursor") ?? undefined,
+  });
+  if (!parsed.success) {
+    return jsonError(400, "INVALID_INPUT", "Choose a valid connection list.");
+  }
+  try {
+    return NextResponse.json(
+      await listConnections(
+        auth.account.$id,
+        parsed.data.kind,
+        parsed.data.cursor ?? null,
+      ),
+    );
+  } catch (error) {
+    return socialFailure("Connections list", error);
+  }
+}
 
 export async function POST(request: Request) {
   const originError = rejectForeignOrigin(request);
@@ -62,7 +94,11 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    await removeRelationship(auth.account.$id, parsed.data.username);
+    if (new URL(request.url).searchParams.get("direction") === "follower") {
+      await removeFollower(auth.account.$id, parsed.data.username);
+    } else {
+      await removeRelationship(auth.account.$id, parsed.data.username);
+    }
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return socialFailure("Unfollow action", error);

@@ -147,6 +147,25 @@ export async function removeRelationship(
   });
 }
 
+export async function removeFollower(
+  viewerId: string,
+  username: string,
+): Promise<void> {
+  const follower = await findUserByUsername(username);
+  if (!follower) throw new SocialError("PROFILE_NOT_FOUND");
+  const follow = await findRelationship<RelationshipRow>(
+    "follows",
+    "follower",
+    follower.$id,
+    "following",
+    viewerId,
+  );
+  if (!follow) return;
+  await runTransaction((transactionId) =>
+    removeFollowInTransaction(follow, transactionId),
+  );
+}
+
 export async function decideIncomingRequest(
   viewerId: string,
   requesterUsername: string,

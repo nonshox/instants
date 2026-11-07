@@ -24,6 +24,8 @@ The current application foundation includes:
 - Idempotent like/unlike actions with server-side counters and in-app
   notifications.
 - Paginated notification inbox, read state, and filtering of blocked users.
+- Paginated follower/following lists, received and sent follow requests,
+  public user profiles, and privacy controls for blocked accounts.
 - One-time hashed Telegram linking, webhook verification, disconnect, and
   message delivery for likes, follow requests, approvals, and new followers.
 - A protected daily Vercel Cron for expired Instants and Telegram tokens.
@@ -32,7 +34,7 @@ The current application foundation includes:
   state, with a centralized Axios client and feature API modules. Form
   state remains local; authentication and authorization stay server-side.
 - A dedicated `/auth` route and protected workspace routes for `/create`,
-  `/connections`, `/profile`, `/notifications`, and `/settings`. The root
+  `/connections`, `/u/[username]`, `/profile`, `/notifications`, and `/settings`. The root
   route opens the Instants feed for signed-in users. The Proxy redirects
   requests without a session cookie, and the workspace server layout
   validates the Appwrite session before rendering protected pages. API

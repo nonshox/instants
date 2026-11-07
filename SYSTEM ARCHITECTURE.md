@@ -70,6 +70,17 @@ are temporary.
     server-side.
 -   Follow/unfollow, private follow requests,
     approval/rejection/cancellation.
+-   Connections is a single paginated view with Followers, Following, and
+    Requests tabs; Requests separates received and sent requests, and its
+    badge counts only incoming requests. Followers support follow-back and
+    removal; Following supports unfollow and block. Search is available at
+    the top of the view.
+-   Public user profiles support follow/request, cancel request, unfollow,
+    and block actions. Profile links are available from connection lists
+    and notifications.
+-   Privacy settings control public/private account visibility and provide
+    a paginated blocked-account list. Unblocking does not recreate removed
+    follows or requests.
 -   Blocking removes follow relationships both directions, removes
     pending requests both directions, prevents profile/content access
     and interactions, and prevents notifications between the two users.
