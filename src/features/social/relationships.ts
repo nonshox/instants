@@ -49,22 +49,25 @@ export async function followByUsername(
 
   if (target.private) {
     try {
-      await runTransaction(async (transactionId) => {
-        await getTables().createRow<RequestRow>({
-          databaseId: getDatabaseId(),
-          tableId: "requests",
-          rowId: ID.unique(),
-          permissions: [],
-          transactionId,
-          data: { requester: viewerId, target: target.$id },
-        });
-        await createNotificationInTransaction(
-          target.$id,
-          viewerId,
-          "follow_request",
-          transactionId,
-        );
-      });
+      await runTransaction(
+        async (transactionId) => {
+          await getTables().createRow<RequestRow>({
+            databaseId: getDatabaseId(),
+            tableId: "requests",
+            rowId: ID.unique(),
+            permissions: [],
+            transactionId,
+            data: { requester: viewerId, target: target.$id },
+          });
+          await createNotificationInTransaction(
+            target.$id,
+            viewerId,
+            "follow_request",
+            transactionId,
+          );
+        },
+        "Follow request transaction",
+      );
       await dispatchTelegramNotification(target.$id, viewerId, "follow_request");
       return "requested";
     } catch (error) {
@@ -76,15 +79,18 @@ export async function followByUsername(
   }
 
   try {
-    await runTransaction(async (transactionId) => {
-      await addFollow(viewerId, target.$id, transactionId);
-      await createNotificationInTransaction(
-        target.$id,
-        viewerId,
-        "new_follower",
-        transactionId,
-      );
-    });
+    await runTransaction(
+      async (transactionId) => {
+        await addFollow(viewerId, target.$id, transactionId);
+        await createNotificationInTransaction(
+          target.$id,
+          viewerId,
+          "new_follower",
+          transactionId,
+        );
+      },
+      "Follow transaction",
+    );
   } catch (error) {
     if (error instanceof AppwriteException && error.code === 409) {
       const created = await findRelationship<RelationshipRow>(

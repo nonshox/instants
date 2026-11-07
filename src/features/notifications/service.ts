@@ -159,36 +159,47 @@ export async function dispatchTelegramNotification(
   actor: string,
   type: NotificationType,
 ): Promise<void> {
-  after(async () => {
-    try {
-      const [actorProfile, recipientBlocks, actorBlocks] = await Promise.all([
-        getTables().getRow({
-          databaseId: getDatabaseId(),
-          tableId: "users",
-          rowId: actor,
-        }),
-        getBlockedUserIds(recipient),
-        getBlockedUserIds(actor),
-      ]);
-      if (recipientBlocks.has(actor) || actorBlocks.has(recipient)) {
-        return;
+  try {
+    after(async () => {
+      try {
+        const [actorProfile, recipientBlocks, actorBlocks] = await Promise.all([
+          getTables().getRow({
+            databaseId: getDatabaseId(),
+            tableId: "users",
+            rowId: actor,
+          }),
+          getBlockedUserIds(recipient),
+          getBlockedUserIds(actor),
+        ]);
+        if (recipientBlocks.has(actor) || actorBlocks.has(recipient)) {
+          return;
+        }
+        const username =
+          typeof actorProfile.username === "string"
+            ? actorProfile.username
+            : "Someone";
+        const message = {
+          follow_request: `@${username} requested to follow you.`,
+          follow_approved: `Your follow request to @${username} was approved.`,
+          new_follower: `@${username} started following you.`,
+          like: `@${username} liked your Instant.`,
+        }[type];
+        await sendTelegramNotification(recipient, message);
+      } catch (error) {
+        logTelegramFailure("delivery", error);
       }
-      const username =
-        typeof actorProfile.username === "string"
-          ? actorProfile.username
-          : "Someone";
-      const message = {
-        follow_request: `@${username} requested to follow you.`,
-        follow_approved: `Your follow request to @${username} was approved.`,
-        new_follower: `@${username} started following you.`,
-        like: `@${username} liked your Instant.`,
-      }[type];
-      await sendTelegramNotification(recipient, message);
-    } catch (error) {
-      console.error(
-        "Telegram notification delivery failed:",
-        error instanceof Error ? error.name : "UnknownError",
-      );
-    }
-  });
+    });
+  } catch (error) {
+    logTelegramFailure("scheduling", error);
+  }
+}
+
+function logTelegramFailure(stage: "delivery" | "scheduling", error: unknown) {
+  const detail =
+    error instanceof AppwriteException
+      ? `Appwrite ${error.code} (${error.type})`
+      : error instanceof Error
+        ? error.name
+        : "UnknownError";
+  console.error(`Telegram notification ${stage} failed: ${detail}`);
 }

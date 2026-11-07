@@ -56,37 +56,49 @@ export async function assertNotBlocked(
 
 export async function runTransaction(
   operation: (transactionId: string) => Promise<void>,
+  label = "Social transaction",
 ): Promise<void> {
   const service = getTables();
-  const transaction = await service.createTransaction({ ttl: 30 });
+  let transactionId: string | null = null;
+  let stage = "create";
 
   try {
-    await operation(transaction.$id);
+    const transaction = await service.createTransaction({ ttl: 60 });
+    transactionId = transaction.$id;
+    stage = "stage operations";
+    await operation(transactionId);
+    stage = "commit";
     const result = await service.updateTransaction({
-      transactionId: transaction.$id,
+      transactionId,
       commit: true,
     });
     if (result.status !== "committed") {
       throw new Error(`Social transaction ended as ${result.status}.`);
     }
   } catch (error) {
-    try {
-      await service.updateTransaction({
-        transactionId: transaction.$id,
-        rollback: true,
-      });
-    } catch (rollbackError) {
-      console.error(
-        "Social transaction rollback failed:",
-        rollbackError instanceof AppwriteException
-          ? rollbackError.code
-          : rollbackError instanceof Error
-            ? rollbackError.name
-            : "UnknownError",
-      );
+    if (transactionId) {
+      try {
+        await service.updateTransaction({
+          transactionId,
+          rollback: true,
+        });
+      } catch (rollbackError) {
+        logTransactionFailure(`${label} rollback`, rollbackError);
+      }
     }
+    logTransactionFailure(`${label} ${stage}`, error);
     throw error;
   }
+}
+
+function logTransactionFailure(operation: string, error: unknown): void {
+  const detail =
+    error instanceof AppwriteException
+      ? `Appwrite ${error.code} (${error.type}): ${error.message}`
+      : error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : "UnknownError";
+  console.error(`${operation} failed: ${detail}`);
 }
 
 export async function addFollow(

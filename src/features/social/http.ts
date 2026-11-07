@@ -73,7 +73,13 @@ export function socialFailure(
     );
   }
 
-  logAuthFailure(operation, error);
+  const detail =
+    error instanceof AppwriteException
+      ? `Appwrite ${error.code} (${error.type})`
+      : error instanceof Error
+        ? error.name
+        : "UnknownError";
+  console.error(`${operation} failed: ${detail}`);
   if (error instanceof AppwriteException && error.code === 409) {
     return jsonError(
       409,
@@ -81,5 +87,9 @@ export function socialFailure(
       "The relationship changed. Refresh and try again.",
     );
   }
-  return jsonError(502, "SOCIAL_UNAVAILABLE", "Social data is unavailable.");
+  return jsonError(
+    503,
+    "SOCIAL_UNAVAILABLE",
+    "Connections are temporarily unavailable. Please try again.",
+  );
 }
