@@ -29,7 +29,7 @@ export async function GET(
     return new NextResponse(body.buffer, {
       headers: {
         "Content-Type": image.mimeType,
-        "Cache-Control": "private, no-store",
+        "Cache-Control": "private, max-age=300",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "Cross-Origin-Resource-Policy": "same-site",
         "X-Content-Type-Options": "nosniff",

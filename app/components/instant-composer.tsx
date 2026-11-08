@@ -162,25 +162,24 @@ export function InstantComposer() {
         return;
       }
 
-      let deviceIds: string[] = [];
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        deviceIds = devices
-          .filter((device) => device.kind === "videoinput")
-          .map((device) => device.deviceId)
-          .filter(Boolean);
-      } catch {
-        deviceIds = [];
-      }
-
-      if (requestId !== cameraRequestId.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      setCameraDeviceIds(deviceIds);
+      // Show the preview as soon as the camera is live; device enumeration
+      // happens in the background.
       setCameraMirrored(isMirroredCamera(stream));
       setCameraStream(stream);
+
+      void navigator.mediaDevices
+        .enumerateDevices()
+        .then((devices) => {
+          if (requestId === cameraRequestId.current) {
+            setCameraDeviceIds(
+              devices
+                .filter((device) => device.kind === "videoinput")
+                .map((device) => device.deviceId)
+                .filter(Boolean),
+            );
+          }
+        })
+        .catch(() => setCameraDeviceIds([]));
     } catch (cause) {
       if (requestId === cameraRequestId.current) {
         setMediaError(getCameraError(cause));
@@ -263,51 +262,67 @@ export function InstantComposer() {
 
     const requestId = ++cameraRequestId.current;
     const currentTrack = cameraStream.getVideoTracks()[0];
-    const currentDeviceId = currentTrack?.getSettings().deviceId;
-    let devices: MediaDeviceInfo[];
-    try {
-      devices = await navigator.mediaDevices.enumerateDevices();
-    } catch (cause) {
-      setMediaError(getCameraError(cause));
-      return;
-    }
-
-    const videoDevices = devices.filter(
-      (device) => device.kind === "videoinput" && device.deviceId,
-    );
-    setCameraDeviceIds(videoDevices.map((device) => device.deviceId));
-
-    const currentIndex = videoDevices.findIndex(
-      (device) => device.deviceId === currentDeviceId,
-    );
-    if (videoDevices.length < 2 || currentIndex < 0) {
-      setMediaError("A second camera is not available on this device.");
-      return;
-    }
+    const currentFacing = currentTrack?.getSettings().facingMode;
+    const currentDeviceId = currentTrack?.getSettings().deviceId ?? "";
+    const targetFacing = currentFacing === "environment" ? "user" : "environment";
 
     setCameraStarting(true);
     setMediaError("");
+
+    // Prefer switching camera role (front/back) — reliable on phones.
+    const candidates: MediaTrackConstraints[] = [
+      { facingMode: { exact: targetFacing } },
+      { facingMode: { ideal: targetFacing } },
+    ];
+
+    // Fall back to picking a different physical device when facingMode is
+    // unsupported or ambiguous (deviceId from getSettings is often empty).
     try {
-      const nextDevice = videoDevices[(currentIndex + 1) % videoDevices.length];
-      const nextStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { deviceId: { exact: nextDevice.deviceId } },
-      });
-      if (requestId !== cameraRequestId.current) {
-        nextStream.getTracks().forEach((track) => track.stop());
-        return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(
+        (device) => device.kind === "videoinput" && device.deviceId,
+      );
+      setCameraDeviceIds(videoDevices.map((device) => device.deviceId));
+      const other = videoDevices.find(
+        (device) => device.deviceId !== currentDeviceId,
+      );
+      if (other) {
+        candidates.push({ deviceId: { exact: other.deviceId } });
+        candidates.push({ deviceId: { ideal: other.deviceId } });
       }
-      setCameraMirrored(isMirroredCamera(nextStream));
-      setCameraStream(nextStream);
-    } catch (cause) {
-      if (requestId === cameraRequestId.current) {
-        setMediaError(getCameraError(cause));
-      }
-    } finally {
-      if (requestId === cameraRequestId.current) {
-        setCameraStarting(false);
+    } catch {
+      // Enumeration failing is fine — the facingMode candidates still apply.
+    }
+
+    let nextStream: MediaStream | null = null;
+    for (const video of candidates) {
+      try {
+        nextStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video,
+        });
+        break;
+      } catch {
+        // Try the next constraint.
       }
     }
+
+    if (!nextStream) {
+      if (requestId === cameraRequestId.current) {
+        setMediaError("A second camera is not available on this device.");
+        setCameraStarting(false);
+      }
+      return;
+    }
+    if (requestId !== cameraRequestId.current) {
+      nextStream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    // Swap only once the new stream works; the old one keeps running otherwise.
+    setCameraMirrored(isMirroredCamera(nextStream));
+    setCameraStream(nextStream);
+    setCameraStarting(false);
   };
 
   const closeCamera = () => {
@@ -453,7 +468,7 @@ export function InstantComposer() {
   return (
     <section
       aria-labelledby="create-instant-title"
-      className="mx-auto w-full max-w-[430px]"
+      className="mx-auto w-full max-w-[350px]"
     >
       <h1
         className="mb-4 text-center text-lg font-semibold tracking-tight"
@@ -520,7 +535,7 @@ export function InstantComposer() {
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent"
               />
-              {cameraDeviceIds.length > 1 && (
+              {cameraDeviceIds.length !== 1 && (
                 <button
                   aria-label="Switch camera"
                   className="absolute left-4 top-4 z-10 grid size-10 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white"
@@ -607,6 +622,9 @@ export function InstantComposer() {
                   className="size-6 animate-spin text-muted-foreground"
                 />
                 <p className="text-xs text-muted-foreground">Starting camera...</p>
+                <p className="max-w-52 text-[10px] leading-4 text-muted-foreground/70">
+                  Your browser may ask for camera permission.
+                </p>
                 <Button
                   onClick={closeCamera}
                   size="sm"
@@ -726,19 +744,19 @@ export function InstantComposer() {
       </form>
 
       {/* Actions */}
-      <div className="mt-10 flex min-h-11 items-center justify-end gap-3 px-1">
+      <div className="mt-9 px-0.5">
         {mediaError ? (
-          <p className="mr-auto text-xs leading-5 text-destructive" role="alert">
+          <p className="mb-2 text-xs leading-5 text-destructive" role="alert">
             {mediaError}
           </p>
         ) : archiveError ? (
-          <p className="mr-auto text-xs leading-5 text-destructive" role="alert">
+          <p className="mb-2 text-xs leading-5 text-destructive" role="alert">
             {archiveError}
           </p>
         ) : null}
         <Button
           aria-busy={uploading}
-          className="h-11 min-w-28 rounded-full px-8 text-sm font-semibold"
+          className="h-12 w-full rounded-full text-sm font-semibold shadow-[0_10px_26px_-8px_rgba(0,0,0,0.35)]"
           disabled={!canShare}
           form="instant-composer-form"
           type="submit"

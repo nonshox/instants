@@ -35,3 +35,8 @@ export async function fetchNotifications(
 export async function markNotificationRead(id: string): Promise<void> {
   await apiClient.patch("/notifications", { ids: [id] });
 }
+
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await apiClient.patch("/notifications", { ids });
+}

@@ -1,17 +1,12 @@
 import { InstantExperience } from "@/app/components/instant-experience";
+import { CreateSkeleton } from "@/app/components/skeletons";
 import { SessionExpired } from "@/app/components/workspace-shell";
 import { getCurrentAccount } from "@/src/features/auth/session";
 import { Suspense } from "react";
 
 export default function CreatePage() {
   return (
-    <Suspense
-      fallback={
-        <p className="text-sm text-muted-foreground" role="status">
-          Loading your Instants...
-        </p>
-      }
-    >
+    <Suspense fallback={<CreateSkeleton />}>
       <AuthenticatedCreate />
     </Suspense>
   );

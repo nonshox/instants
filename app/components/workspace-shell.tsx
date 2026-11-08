@@ -113,6 +113,7 @@ export function WorkspaceShell({
             <Link
               className="inline-flex items-center gap-2 font-semibold tracking-tight text-foreground"
               href="/"
+              prefetch={true}
             >
               <Image
                 alt=""
@@ -141,6 +142,7 @@ export function WorkspaceShell({
                   }`}
                   href={item.href}
                   key={item.href}
+                  prefetch={true}
                 >
                   {item.label}
                 </Link>
@@ -156,6 +158,7 @@ export function WorkspaceShell({
               }
               className="relative grid size-10 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               href="/notifications"
+              prefetch={true}
             >
               <Bell aria-hidden="true" className="size-5" strokeWidth={1.8} />
               {unreadCount > 0 && (
@@ -208,7 +211,7 @@ export function WorkspaceShell({
                         }`}
                         key={item.href}
                         onClick={() => setMenuOpen(false)}
-                        render={<Link href={item.href} />}
+                        render={<Link href={item.href} prefetch={true} />}
                       >
                         <Icon aria-hidden="true" className="size-4" />
                         {item.label}

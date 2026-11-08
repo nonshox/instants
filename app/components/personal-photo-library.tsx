@@ -138,7 +138,7 @@ export function PersonalPhotoLibrary({ accountId }: { accountId: string }) {
           {Array.from({ length: 10 }, (_, index) => (
             <div
               aria-hidden="true"
-              className="aspect-square animate-pulse rounded-lg bg-muted"
+              className="aspect-square animate-pulse rounded-md bg-muted ring-1 ring-border/50 motion-reduce:animate-none"
               key={index}
             />
           ))}

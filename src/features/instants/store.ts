@@ -257,8 +257,18 @@ export const useInstantStore = create<InstantState>((set, get) => ({
     }
   },
   toggleLike: async (instant, liked) => {
+    // Optimistic: update the UI immediately, roll back on failure.
     set((state) => ({
       pendingLikes: new Set(state.pendingLikes).add(instant.id),
+      feed: state.feed.map((item) =>
+        item.id === instant.id
+          ? {
+              ...item,
+              likedByViewer: liked,
+              likes: Math.max(0, item.likes + (liked ? 1 : -1)),
+            }
+          : item,
+      ),
     }));
     try {
       const result = await setInstantLike(instant.id, liked);
@@ -274,12 +284,15 @@ export const useInstantStore = create<InstantState>((set, get) => ({
         ),
       }));
     } catch (cause) {
-      set({
+      set((state) => ({
+        feed: state.feed.map((item) =>
+          item.id === instant.id ? { ...item, ...instant } : item,
+        ),
         feedError: getApiErrorMessage(
           cause,
           "The like could not be updated.",
         ),
-      });
+      }));
     } finally {
       set((state) => {
         const pendingLikes = new Set(state.pendingLikes);

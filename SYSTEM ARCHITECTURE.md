@@ -118,6 +118,10 @@ are temporary.
 -   All relevant notification types must be available in-app and sent
     through connected Telegram: link requests, link acceptances, likes,
     etc.
+-   The in-app notifications page is a full page, not a card: header
+    with unread count and a mark-all-read action, filter chips
+    (All/Unread/Likes/Links), day grouping (Today/Earlier), relative
+    timestamps, per-item mark read, and paginated older entries.
 -   Never send notifications across a block relationship.
 -   `notifications` stores in-app notifications; `tg` stores persistent
     Telegram mapping.

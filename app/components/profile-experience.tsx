@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { PersonalPhotoLibrary } from "@/app/components/personal-photo-library";
 import { UserAvatar } from "@/app/components/user-avatar";
+import { ProfileSkeleton } from "@/app/components/skeletons";
 import {
   deleteAvatar,
   fetchProfile,
@@ -211,13 +212,7 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
         id="profile"
       >
         {loading ? (
-          <div className="flex items-center gap-4" role="status">
-            <div className="size-20 animate-pulse rounded-full bg-muted sm:size-24" />
-            <div className="grid gap-2">
-              <div className="h-4 w-32 animate-pulse rounded-full bg-muted" />
-              <div className="h-3 w-44 animate-pulse rounded-full bg-muted" />
-            </div>
-          </div>
+          <ProfileSkeleton />
         ) : error && !editing ? (
           <div className="grid justify-items-start gap-2">
             <p className="text-xs leading-5 text-destructive" role="alert">

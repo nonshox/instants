@@ -46,7 +46,9 @@ export async function GET(
     return new NextResponse(body.buffer, {
       headers: {
         "Content-Type": avatar.mimeType,
-        "Cache-Control": "private, no-store",
+        // URLs carry the file ID (?v=), so a changed avatar always gets a
+        // new URL — the bytes are immutable and can be cached hard.
+        "Cache-Control": "private, max-age=31536000, immutable",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "Cross-Origin-Resource-Policy": "same-site",
         "X-Content-Type-Options": "nosniff",

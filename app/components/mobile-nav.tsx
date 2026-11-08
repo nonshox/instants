@@ -39,6 +39,7 @@ export function MobileNav() {
                 aria-label={item.label}
                 className="group relative flex h-full items-center justify-center outline-none transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 href={item.href}
+                prefetch={true}
                 title={item.label}
               >
                 <Icon

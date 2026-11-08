@@ -200,12 +200,12 @@ export function InstantViewer(props: InstantViewerProps) {
 
       {/* Photo */}
       <div
-        className={`relative grid min-h-0 flex-1 select-none place-items-center ${
+        className={`relative grid min-h-0 flex-1 select-none place-items-center [container-type:size] ${
           isFeed ? "cursor-pointer" : ""
         }`}
         onDoubleClick={handleDoubleTap}
       >
-        <div className="relative aspect-square h-full max-h-full max-w-full overflow-hidden rounded-[1.5rem] shadow-[0_14px_40px_-12px_rgba(0,0,0,0.3)] ring-1 ring-black/10 dark:ring-white/10">
+        <div className="relative aspect-square size-[96cqmin] overflow-hidden rounded-[1.5rem] shadow-[0_14px_40px_-12px_rgba(0,0,0,0.3)] ring-1 ring-black/10 dark:ring-white/10">
           {imageUrl && (
             <Image
               alt={imageAlt}

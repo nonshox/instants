@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/app/components/user-avatar";
+import { PublicProfileSkeleton } from "@/app/components/skeletons";
 import {
   removeLink,
   requestLink,
@@ -99,7 +100,7 @@ export function PublicProfileExperience({ username }: { username: string }) {
   };
 
   if (loading) {
-    return <p className="py-12 text-center text-sm text-muted-foreground" role="status">Loading profile...</p>;
+    return <PublicProfileSkeleton />;
   }
   if (!profile) {
     return <p className="py-12 text-center text-sm text-muted-foreground" role="alert">{error}</p>;

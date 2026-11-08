@@ -219,48 +219,62 @@ export function SocialExperience() {
     const target = profile;
     const remove =
       target.relationship === "linked" || target.relationship === "requested";
+    const wasLinked = target.relationship === "linked";
+    const previousLists = lists;
+    const previousRelationship = target.relationship;
+
     setPending(target.username);
     setError("");
+
+    // Optimistic: flip the button and lists instantly, roll back on failure.
+    if (remove) {
+      setProfile({ ...target, relationship: "not_linked" });
+      setLists((current) => ({
+        ...current,
+        links: {
+          ...current.links,
+          items: current.links.items.filter(
+            (item) => item.username !== target.username,
+          ),
+        },
+        sent: {
+          ...current.sent,
+          items: current.sent.items.filter(
+            (item) => item.username !== target.username,
+          ),
+        },
+      }));
+    } else if (target.relationship === "incoming") {
+      setProfile({ ...target, relationship: "linked" });
+    } else {
+      setProfile({ ...target, relationship: "requested" });
+    }
+
     try {
       if (remove) {
-        const wasLinked = target.relationship === "linked";
         await removeLink(target.username);
-        setProfile((current) =>
-          current ? { ...current, relationship: "not_linked" } : current,
-        );
-        setLists((current) => ({
-          ...current,
-          links: {
-            ...current.links,
-            items: current.links.items.filter(
-              (item) => item.username !== target.username,
-            ),
-          },
-          sent: {
-            ...current.sent,
-            items: current.sent.items.filter(
-              (item) => item.username !== target.username,
-            ),
-          },
-        }));
         showToast(wasLinked ? "Link removed." : "Link request cancelled.");
+        return;
+      }
+      const status = await requestLink(target.username);
+      setProfile((current) =>
+        current ? { ...current, relationship: status } : current,
+      );
+      if (status === "linked") {
+        addLinkToList({
+          id: target.id,
+          username: target.username,
+          name: target.name,
+          private: target.private,
+          avatar: target.avatar,
+        });
+        showToast("Linked.");
       } else {
-        const status = await requestLink(target.username);
-        setProfile((current) =>
-          current ? { ...current, relationship: status } : current,
-        );
-        if (status === "linked") {
-          addLinkToList({
-            username: target.username,
-            name: target.name,
-            private: target.private,
-          });
-          showToast("Linked.");
-        } else {
-          showToast("Link request sent.");
-        }
+        showToast("Link request sent.");
       }
     } catch (cause) {
+      setProfile({ ...target, relationship: previousRelationship });
+      setLists(previousLists);
       setError(
         getApiErrorMessage(cause, "The link could not be updated."),
       );

@@ -49,12 +49,22 @@ export function SocialListSection({
         )}
       </div>
       {loading ? (
-        <p
-          className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground"
+        <ul
+          aria-label="Loading accounts"
+          className="divide-y divide-border/60 rounded-xl bg-muted/20 px-3"
           role="status"
         >
-          Loading...
-        </p>
+          {[0, 1, 2].map((item) => (
+            <li className="flex min-h-16 items-center gap-3 py-3" key={item}>
+              <span className="size-10 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+              <div className="grid flex-1 gap-1.5">
+                <span className="h-3 w-32 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+                <span className="h-2.5 w-20 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+              </div>
+              <span className="h-8 w-20 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+            </li>
+          ))}
+        </ul>
       ) : items.length === 0 ? (
         <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
           {emptyMessage(kind)}

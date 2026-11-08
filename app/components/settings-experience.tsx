@@ -367,9 +367,14 @@ export function SettingsExperience({
           description="Unblocking never restores links or requests."
         />
         {loadingBlocked && blocked.items.length === 0 ? (
-          <p className="px-4 py-3 text-xs text-muted-foreground" role="status">
-            Loading...
-          </p>
+          <ul aria-label="Loading blocked accounts" role="status">
+            {[0, 1].map((item) => (
+              <li className="flex items-center gap-3 py-2.5 pl-[3.25rem] pr-4 sm:pl-[3.75rem] sm:pr-5" key={item}>
+                <span className="size-8 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+                <span className="h-3 w-32 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+              </li>
+            ))}
+          </ul>
         ) : blocked.items.length === 0 ? (
           <p className="px-4 py-3 text-xs text-muted-foreground">
             No blocked accounts.

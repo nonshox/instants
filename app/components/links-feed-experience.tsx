@@ -11,6 +11,7 @@ import { useInstantStore } from "@/src/features/instants/store";
 import { formatInstantDate } from "@/src/features/instants/format-date";
 import { UserAvatar } from "@/app/components/user-avatar";
 import { InstantViewer } from "@/app/components/instant-viewer";
+import { FeedSkeleton } from "@/app/components/skeletons";
 
 export function LinksFeedExperience({
   accountId,
@@ -69,7 +70,7 @@ export function LinksFeedExperience({
     : null;
 
   return (
-    <section className="mx-auto w-full max-w-[470px]">
+    <section className="mx-auto w-full max-w-[350px]">
       {error && (
         <div
           className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-3"
@@ -90,19 +91,7 @@ export function LinksFeedExperience({
       )}
 
       {loading && feed.length === 0 ? (
-        <div className="space-y-8" role="status">
-          {[1, 2].map((item) => (
-            <div className="animate-pulse" key={item}>
-              <div className="mb-3 flex items-center gap-3">
-                <div className="size-9 rounded-full bg-muted" />
-                <div className="h-3 w-24 rounded-full bg-muted" />
-              </div>
-              <div className="aspect-square rounded-xl bg-muted" />
-              <div className="mt-4 h-3 w-16 rounded-full bg-muted" />
-            </div>
-          ))}
-          <span className="sr-only">Loading Instants</span>
-        </div>
+        <FeedSkeleton />
       ) : feed.length === 0 ? (
         <div className="flex flex-col items-center px-6 py-20 text-center">
           <div className="mb-5 grid size-14 place-items-center rounded-full border border-border">
@@ -167,7 +156,7 @@ export function LinksFeedExperience({
                     alt={`Instant shared by @${instant.username}`}
                     className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     fill
-                    sizes="(max-width: 500px) 100vw, 470px"
+                    sizes="(max-width: 400px) 100vw, 350px"
                     src={instant.imageUrl}
                     unoptimized
                   />

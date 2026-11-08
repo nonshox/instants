@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   fetchNotifications,
   markNotificationRead,
+  markNotificationsRead,
   type NotificationItem,
 } from "./client-api";
 import { getApiErrorMessage } from "../../lib/api-client";
@@ -19,6 +20,7 @@ type NotificationState = {
   load: (refresh?: boolean) => Promise<void>;
   loadMore: () => Promise<void>;
   markRead: (item: NotificationItem) => Promise<void>;
+  markAllRead: () => Promise<void>;
   reset: () => void;
 };
 
@@ -115,6 +117,31 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         const pendingIds = new Set(state.pendingIds);
         pendingIds.delete(item.id);
         return { pendingIds };
+      });
+    }
+  },
+  markAllRead: async () => {
+    const unreadIds = get()
+      .items.filter((item) => !item.read)
+      .map((item) => item.id);
+    if (unreadIds.length === 0) return;
+    set({ pendingIds: new Set(unreadIds), error: "" });
+    try {
+      for (let start = 0; start < unreadIds.length; start += 50) {
+        await markNotificationsRead(unreadIds.slice(start, start + 50));
+      }
+      set((state) => ({
+        items: state.items.map((entry) => ({ ...entry, read: true })),
+        unreadCount: 0,
+        pendingIds: new Set<string>(),
+      }));
+    } catch (cause) {
+      set({
+        error: getApiErrorMessage(
+          cause,
+          "Notifications could not be marked as read.",
+        ),
+        pendingIds: new Set<string>(),
       });
     }
   },
