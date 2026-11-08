@@ -11,12 +11,8 @@ export const instantIdSchema = z
 export const captionSchema = z
   .string()
   .trim()
-  .max(100)
-  .refine((value) => !/[\r\n]/.test(value), "Caption must be one line.")
-  .refine(
-    (value) => value === "" || value.split(/\s+/).length <= 5,
-    "Caption must be five words or fewer.",
-  );
+  .max(60)
+  .refine((value) => !/[\r\n]/.test(value), "Caption must be one line.");
 
 export const feedCursorSchema = instantIdSchema;
 export const localInstantIdSchema = z.string().uuid();

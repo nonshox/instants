@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     return jsonError(
       413,
       "IMAGE_SIZE_INVALID",
-      "Choose an image smaller than 10 MB.",
+      "That photo can't be uploaded. Try another one.",
     );
   }
 

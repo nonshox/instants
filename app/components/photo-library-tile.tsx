@@ -29,7 +29,7 @@ export function PhotoLibraryTile({
   return (
     <button
       aria-label="Open photo"
-      className="group relative aspect-square w-full overflow-hidden rounded-md bg-muted outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative aspect-square w-full overflow-hidden rounded-md bg-muted outline-none ring-1 ring-border/50 transition focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onPreview}
       type="button"
     >

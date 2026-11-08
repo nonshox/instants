@@ -55,7 +55,7 @@ export async function createInstant(
   const optimized = await optimizeImage(original);
   if (optimized.buffer.byteLength > 10_000_000) {
     throw new UnsupportedInstantImageError(
-      "The optimized image exceeds the 10 MB limit.",
+      "That photo can't be used. Try another one.",
     );
   }
 

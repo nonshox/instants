@@ -123,11 +123,11 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
     setMessage("");
 
     if (!ACCEPTED_AVATAR_TYPES.includes(file.type)) {
-      setError("Choose a JPEG, PNG, or WebP photo.");
+      setError("That photo can't be used. Try another one.");
       return;
     }
     if (file.size === 0 || file.size > MAX_AVATAR_BYTES) {
-      setError("Choose a photo smaller than 10 MB.");
+      setError("That photo can't be used. Try another one.");
       return;
     }
 
@@ -329,7 +329,7 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
             </div>
           </form>
         ) : (
-          <div className="flex items-start gap-4">
+          <div className="flex items-start justify-center gap-4">
             {avatarButton}
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">

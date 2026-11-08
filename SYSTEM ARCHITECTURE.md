@@ -45,10 +45,13 @@ are temporary.
 ### Instants and feed
 
 -   Photos only in v1.
--   Caption optional, one line, maximum five words. Enforce in API.
--   Create is a compact single-square composer: choose, drag, paste, or
-    capture a photo, crop it to 1:1, archive it locally first, then
-    share. Failed shares can be retried inline from the archived copy.
+-   Caption optional, one line, maximum 60 characters. Enforce in API.
+-   Create is a single-square "beauty frame" composer: the camera
+    starts automatically on open; choose, drag, paste, or capture a
+    photo, crop it to 1:1, archive it locally first, then share. The
+    caption is a short one-line field in a curved pill overlapping the
+    frame's bottom border. Failed shares can be retried inline from
+    the archived copy.
 -   Owner can manually delete any Instant at any time.
 -   Daily automatic cleanup deletes shared Appwrite image and post
     record only once at least 36 hours old. Since cleanup is daily, a
@@ -76,7 +79,7 @@ are temporary.
     no like cards, filters, search, or sorting. Shared status is shown
     as a subtle badge on the thumbnail only.
 -   Opening a photo, in one click, shows a detail view with the photo,
-    its caption (inline edit, one line, at most five words), sync
+    its caption (inline edit, one line, at most 60 characters), sync
     status, original date, file size, format, retry for failed shares,
     and delete with an inline confirmation.
 -   Caption edits on a shared photo are stored server-side in
@@ -262,7 +265,7 @@ maintained only by trusted server-side operations.
 -   `expires`: datetime, required.
 -   `likes`: integer, default `0`.
 -   `cap`: varchar(100), optional, default `""`; API enforces one line
-    and max five words. Indexes: `user_expires_idx`
+    and max 60 characters. Indexes: `user_expires_idx`
     composite(`user`,`expires`); `expires_idx` on `expires`.
 
 ### `likes`
@@ -453,7 +456,7 @@ and prevents access/interactions both ways.
 Feed/Instants: - Feed only contains living Instants from linked
 accounts. - Own Instants excluded from own main feed. - Newest-first
 order. - Expiry behavior matches daily cleanup policy. - Caption
-optional, one line, max five words. - Unauthorized users cannot retrieve
+optional, one line, max 60 characters. - Unauthorized users cannot retrieve
 private image bytes.
 
 Likes/notifications: - Duplicate like rejected. - Counts accurate. -

@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -21,8 +22,6 @@ import {
   type FormEvent,
 } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import type { ArchivedInstant } from "@/src/features/instants/archive";
 import {
   prepareSquareImage,
@@ -33,7 +32,7 @@ import { useInstantStore } from "@/src/features/instants/store";
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_BYTES = 10_000_000;
 const MAX_EXPORT_EDGE = 1440;
-const CAPTION_WORD_LIMIT = 5;
+const CAPTION_MAX = 60;
 
 export function InstantComposer() {
   const uploading = useInstantStore((state) => state.uploading);
@@ -49,6 +48,7 @@ export function InstantComposer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraRequestId = useRef(0);
   const fileRequestId = useRef(0);
+  const autoStarted = useRef(false);
   const [file, setFile] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [preview, setPreview] = useState<{ file: File; url: string } | null>(
@@ -125,67 +125,8 @@ export function InstantComposer() {
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const chooseFile = async (nextFile: File | null) => {
-    if (uploading) return;
-
-    const requestId = ++fileRequestId.current;
-    cameraRequestId.current += 1;
-    setCameraStarting(false);
-    setCameraStream(null);
-    setCameraMirrored(false);
-    setMediaError("");
-    setPreparing(false);
-    setFailedUpload(null);
-    clearUploadMessage();
-
-    if (!nextFile) {
-      setFile(null);
-      return;
-    }
-
-    if (!ACCEPTED_IMAGE_TYPES.includes(nextFile.type)) {
-      setFile(null);
-      setMediaError("Choose a JPEG, PNG, or WebP photo.");
-      return;
-    }
-
-    if (nextFile.size === 0 || nextFile.size > MAX_IMAGE_BYTES) {
-      setFile(null);
-      setMediaError("Choose a photo smaller than 10 MB.");
-      return;
-    }
-
-    setFile(nextFile);
-    setPreparing(true);
-    try {
-      const squareFile = await prepareSquareImage(nextFile);
-      if (requestId === fileRequestId.current) {
-        setFile(squareFile);
-      }
-    } catch (cause) {
-      if (requestId === fileRequestId.current) {
-        setFile(null);
-        setMediaError(
-          cause instanceof SquareImageError
-            ? cause.message
-            : "This photo could not be prepared. Choose a different image and try again.",
-        );
-      }
-    } finally {
-      if (requestId === fileRequestId.current) {
-        setPreparing(false);
-      }
-    }
-  };
-
-  const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const nextFile = event.target.files?.[0] ?? null;
-    event.target.value = "";
-    void chooseFile(nextFile);
-  };
-
-  const openCamera = async () => {
-    if (uploading || preparing || cameraStarting) return;
+  const openCamera = useCallback(async () => {
+    if (uploading || preparing || cameraStarting || cameraStream) return;
 
     setMediaError("");
     clearUploadMessage();
@@ -249,6 +190,72 @@ export function InstantComposer() {
         setCameraStarting(false);
       }
     }
+  }, [uploading, preparing, cameraStarting, cameraStream, clearUploadMessage]);
+
+  // Camera turns on automatically when the page opens.
+  useEffect(() => {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    void openCamera();
+  }, [openCamera]);
+
+  const chooseFile = async (nextFile: File | null) => {
+    if (uploading) return;
+
+    const requestId = ++fileRequestId.current;
+    cameraRequestId.current += 1;
+    setCameraStarting(false);
+    setCameraStream(null);
+    setCameraMirrored(false);
+    setMediaError("");
+    setPreparing(false);
+    setFailedUpload(null);
+    clearUploadMessage();
+
+    if (!nextFile) {
+      setFile(null);
+      return;
+    }
+
+    if (!ACCEPTED_IMAGE_TYPES.includes(nextFile.type)) {
+      setFile(null);
+      setMediaError("That photo can't be used. Try another one.");
+      return;
+    }
+
+    if (nextFile.size === 0 || nextFile.size > MAX_IMAGE_BYTES) {
+      setFile(null);
+      setMediaError("That photo can't be used. Try another one.");
+      return;
+    }
+
+    setFile(nextFile);
+    setPreparing(true);
+    try {
+      const squareFile = await prepareSquareImage(nextFile);
+      if (requestId === fileRequestId.current) {
+        setFile(squareFile);
+      }
+    } catch (cause) {
+      if (requestId === fileRequestId.current) {
+        setFile(null);
+        setMediaError(
+          cause instanceof SquareImageError
+            ? cause.message
+            : "This photo could not be prepared. Choose a different image and try again.",
+        );
+      }
+    } finally {
+      if (requestId === fileRequestId.current) {
+        setPreparing(false);
+      }
+    }
+  };
+
+  const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    void chooseFile(nextFile);
   };
 
   const flipCamera = async () => {
@@ -351,9 +358,7 @@ export function InstantComposer() {
     );
     if (!blob || blob.size > MAX_IMAGE_BYTES) {
       setMediaError(
-        blob
-          ? "This photo is larger than 10 MB. Try moving closer or use a smaller image."
-          : "The photo could not be captured. Please try again.",
+        "The photo could not be captured. Try moving a little closer and try again.",
       );
       return;
     }
@@ -450,21 +455,17 @@ export function InstantComposer() {
       aria-labelledby="create-instant-title"
       className="mx-auto w-full max-w-[430px]"
     >
-      <header className="mb-4">
-        <h1
-          className="text-xl font-semibold tracking-tight"
-          id="create-instant-title"
-        >
-          New Instant
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Share a quick moment with your links.
-        </p>
-      </header>
+      <h1
+        className="mb-4 text-center text-lg font-semibold tracking-tight"
+        id="create-instant-title"
+      >
+        New Instant
+      </h1>
 
       <form
         aria-busy={uploading}
-        className="overflow-hidden rounded-2xl bg-card ring-1 ring-border/70"
+        className="relative"
+        id="instant-composer-form"
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
@@ -474,9 +475,10 @@ export function InstantComposer() {
         onPaste={onPaste}
         onSubmit={(event) => void handleSubmit(event)}
       >
+        {/* Beauty frame */}
         <div
-          className={`relative isolate aspect-square w-full overflow-hidden transition-colors ${
-            dragging ? "bg-primary/5" : "bg-muted/50"
+          className={`relative isolate aspect-square w-full overflow-hidden rounded-[2rem] bg-muted/50 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70 transition-colors ${
+            dragging ? "bg-primary/5" : ""
           }`}
           onDragEnter={(event) => {
             event.preventDefault();
@@ -519,41 +521,39 @@ export function InstantComposer() {
                 className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent"
               />
               {cameraDeviceIds.length > 1 && (
-                <Button
+                <button
                   aria-label="Switch camera"
-                  className="absolute left-3 top-3 z-10 rounded-full bg-black/40 text-white backdrop-blur-sm hover:bg-black/60 hover:text-white"
+                  className="absolute left-4 top-4 z-10 grid size-10 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white"
                   disabled={cameraStarting}
                   onClick={() => void flipCamera()}
-                  size="icon-sm"
                   type="button"
-                  variant="ghost"
                 >
                   {cameraStarting ? (
                     <LoaderCircle
                       aria-hidden="true"
-                      className="animate-spin"
+                      className="size-5 animate-spin"
                     />
                   ) : (
-                    <FlipHorizontal2 aria-hidden="true" />
+                    <FlipHorizontal2 aria-hidden="true" className="size-5" />
                   )}
-                </Button>
+                </button>
               )}
               <button
                 aria-label="Close camera"
-                className="absolute right-3 top-3 z-10 grid size-8 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="absolute right-4 top-4 z-10 grid size-10 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white"
                 onClick={closeCamera}
                 type="button"
               >
-                <X aria-hidden="true" className="size-4" />
+                <X aria-hidden="true" className="size-5" />
               </button>
               <button
                 aria-label="Take photo"
-                className="absolute bottom-5 left-1/2 z-10 grid size-14 -translate-x-1/2 place-items-center rounded-full border-[3px] border-white/90 bg-white/20 backdrop-blur-sm transition active:scale-95 disabled:opacity-50"
+                className="absolute bottom-6 left-1/2 z-10 grid size-16 -translate-x-1/2 place-items-center rounded-full border-[3px] border-white/90 bg-white/15 outline-none backdrop-blur-sm transition active:scale-95 focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
                 disabled={cameraStarting || uploading}
                 onClick={() => void capturePhoto()}
                 type="button"
               >
-                <span className="size-10 rounded-full bg-white" />
+                <span className="size-12 rounded-full bg-white" />
               </button>
             </>
           ) : previewUrl && !cameraStarting ? (
@@ -562,7 +562,7 @@ export function InstantComposer() {
                 alt="Preview of the selected Instant"
                 className="object-cover"
                 fill
-                sizes="(max-width: 430px) 100vw, 430px"
+                sizes="430px"
                 src={previewUrl}
                 unoptimized
               />
@@ -571,36 +571,32 @@ export function InstantComposer() {
                 className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/50 to-transparent"
               />
               <button
-                aria-label="Remove selected photo"
-                className="absolute right-3 top-3 z-10 grid size-8 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                aria-label="Remove photo"
+                className="absolute right-4 top-4 z-10 grid size-10 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white"
                 onClick={() => void chooseFile(null)}
                 type="button"
               >
-                <X aria-hidden="true" className="size-4" />
+                <X aria-hidden="true" className="size-5" />
               </button>
-              <div className="absolute inset-x-3 bottom-3 z-10 flex items-center justify-between gap-2">
-                <Button
-                  className="rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-sm hover:bg-background"
+              <div className="absolute inset-x-4 bottom-4 z-10 flex items-center justify-between">
+                <button
+                  aria-label="Choose a different photo"
+                  className="grid size-11 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
                   disabled={uploading || preparing}
                   onClick={() => inputRef.current?.click()}
-                  size="sm"
                   type="button"
-                  variant="ghost"
                 >
-                  <ImagePlus aria-hidden="true" />
-                  Change
-                </Button>
-                <Button
-                  className="rounded-full bg-background/90 text-foreground shadow-sm backdrop-blur-sm hover:bg-background"
+                  <ImagePlus aria-hidden="true" className="size-5" />
+                </button>
+                <button
+                  aria-label="Use the camera"
+                  className="grid size-11 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
                   disabled={uploading || preparing}
                   onClick={() => void openCamera()}
-                  size="sm"
                   type="button"
-                  variant="ghost"
                 >
-                  <Camera aria-hidden="true" />
-                  Camera
-                </Button>
+                  <Camera aria-hidden="true" className="size-5" />
+                </button>
               </div>
             </>
           ) : cameraStarting ? (
@@ -610,9 +606,7 @@ export function InstantComposer() {
                   aria-hidden="true"
                   className="size-6 animate-spin text-muted-foreground"
                 />
-                <p className="text-sm text-muted-foreground">
-                  Starting camera...
-                </p>
+                <p className="text-xs text-muted-foreground">Starting camera...</p>
                 <Button
                   onClick={closeCamera}
                   size="sm"
@@ -627,43 +621,34 @@ export function InstantComposer() {
             <>
               <div
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-3 rounded-xl border-2 border-dashed transition-colors ${
+                className={`pointer-events-none absolute inset-4 rounded-[1.5rem] border-2 border-dashed transition-colors ${
                   dragging ? "border-primary/60" : "border-border"
                 }`}
               />
               <div className="relative grid h-full place-items-center px-6 text-center">
-                <div className="grid justify-items-center gap-4">
-                  <span className="grid size-14 place-items-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border/60">
-                    <ImagePlus aria-hidden="true" className="size-6" />
+                <div className="grid justify-items-center gap-5">
+                  <span className="grid size-16 place-items-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border/60">
+                    <ImagePlus aria-hidden="true" className="size-7" />
                   </span>
-                  <div>
-                    <p className="text-sm font-medium">Add a photo</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Square 1:1 · JPEG, PNG or WebP · up to 10 MB
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    <Button
-                      className="rounded-full"
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      aria-label="Choose a photo"
+                      className="grid size-12 place-items-center rounded-full bg-foreground text-background outline-none transition hover:bg-foreground/85 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                       disabled={uploading || preparing}
                       onClick={() => inputRef.current?.click()}
-                      size="sm"
                       type="button"
                     >
-                      <ImagePlus aria-hidden="true" />
-                      Choose photo
-                    </Button>
-                    <Button
-                      className="rounded-full"
+                      <ImagePlus aria-hidden="true" className="size-5" />
+                    </button>
+                    <button
+                      aria-label="Open the camera"
+                      className="grid size-12 place-items-center rounded-full bg-background text-foreground outline-none ring-1 ring-border/70 transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                       disabled={uploading || preparing}
                       onClick={() => void openCamera()}
-                      size="sm"
                       type="button"
-                      variant="outline"
                     >
-                      <Camera aria-hidden="true" />
-                      Camera
-                    </Button>
+                      <Camera aria-hidden="true" className="size-5" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -673,14 +658,11 @@ export function InstantComposer() {
           {dragging && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-30 grid place-items-center bg-background/85 px-6 text-center backdrop-blur-sm"
+              className="pointer-events-none absolute inset-0 z-30 grid place-items-center bg-background/85 backdrop-blur-sm"
             >
               <div className="grid justify-items-center gap-2">
-                <ImagePlus className="size-6" />
+                <ImagePlus className="size-7" />
                 <p className="text-sm font-medium">Drop your photo</p>
-                <p className="text-xs text-muted-foreground">
-                  It will be cropped to a square
-                </p>
               </div>
             </div>
           )}
@@ -695,7 +677,7 @@ export function InstantComposer() {
                   aria-hidden="true"
                   className="size-4 animate-spin"
                 />
-                Cropping to square
+                Preparing...
               </span>
             </div>
           )}
@@ -712,167 +694,130 @@ export function InstantComposer() {
                   className="size-6 animate-spin"
                 />
                 <p className="text-sm font-medium">Sharing...</p>
-                <p className="text-xs text-muted-foreground">
-                  Saving to your private archive first
-                </p>
               </div>
             </div>
           )}
         </div>
 
-        <div className="space-y-3 p-3.5">
-          <div className="grid gap-1.5">
-            <div className="flex items-center justify-between gap-3">
-              <Label
-                className="text-xs font-medium text-muted-foreground"
-                htmlFor="instant-caption"
-              >
-                Caption
-              </Label>
-              <span
-                className={`text-[11px] tabular-nums ${
-                  captionIsValid
-                    ? "text-muted-foreground"
-                    : "text-destructive"
-                }`}
-                id="caption-count"
-              >
-                {countWords(caption)}/{CAPTION_WORD_LIMIT}
-              </span>
-            </div>
-            <Textarea
-              aria-describedby="caption-count"
+        {/* Caption pill — curved, sitting on the frame's bottom border */}
+        <div className="pointer-events-none absolute inset-x-4 -bottom-5 z-10">
+          <div className="pointer-events-auto flex h-11 items-center gap-2 rounded-full border border-border/70 bg-background/95 pl-5 pr-4 shadow-lg shadow-black/10 backdrop-blur-md ring-1 ring-black/5 transition focus-within:border-ring/50 focus-within:ring-2 focus-within:ring-ring">
+            <input
+              aria-label="Caption"
               aria-invalid={!captionIsValid}
-              className="min-h-16 resize-none border-transparent bg-muted/50 px-3 py-2.5 text-sm"
+              autoComplete="off"
+              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               id="instant-caption"
-              maxLength={100}
+              maxLength={CAPTION_MAX}
               onChange={(event) =>
                 setCaption(event.target.value.replace(/[\r\n]+/g, " "))
               }
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  !(event.metaKey || event.ctrlKey)
-                ) {
-                  event.preventDefault();
-                }
-              }}
-              placeholder="Write a few words..."
-              rows={2}
+              placeholder="Caption this moment..."
               value={caption}
             />
-            {!captionIsValid && (
-              <p className="text-xs text-destructive" role="alert">
-                Keep it to one line and five words or fewer.
-              </p>
-            )}
-          </div>
-
-          {mediaError && (
-            <p className="text-xs text-destructive" role="alert">
-              {mediaError}
-            </p>
-          )}
-          {archiveError && (
-            <p className="text-xs text-destructive" role="alert">
-              {archiveError}
-            </p>
-          )}
-
-          {(uploadMessage || failedUpload) && (
-            <div
-              className="grid gap-2"
-              role={uploadFailed && !retrying ? "alert" : "status"}
+            <span
+              aria-hidden="true"
+              className="shrink-0 text-[10px] font-medium tabular-nums text-muted-foreground"
             >
-              {uploadMessage ? (
-                <p
-                  className={`flex items-start gap-2 text-xs ${
-                    uploadFailed
-                      ? "text-destructive"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {uploadSucceeded && (
-                    <Check
-                      aria-hidden="true"
-                      className="mt-0.5 size-3.5 shrink-0"
-                    />
-                  )}
-                  <span>{uploadMessage}</span>
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Retrying from your archive...
-                </p>
-              )}
-              <div className="flex items-center gap-3">
-                {uploadFailed && (
-                  <Button
-                    disabled={retrying || uploading}
-                    onClick={() => void retryFailedUpload()}
-                    size="xs"
-                    type="button"
-                    variant="outline"
-                  >
-                    {retrying ? (
-                      <>
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="animate-spin"
-                        />
-                        Retrying...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw aria-hidden="true" />
-                        Try again
-                      </>
-                    )}
-                  </Button>
-                )}
-                {uploadSucceeded && (
-                  <Link
-                    className="text-xs font-medium underline underline-offset-4"
-                    href="/"
-                  >
-                    View feed
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-border/60 px-3.5 py-3">
-          <p className="text-[11px] leading-tight text-muted-foreground">
-            Private archive copy
-            <span aria-hidden="true" className="mx-1 text-border">
-              ·
+              {caption.length}/{CAPTION_MAX}
             </span>
-            Expires in 36 h
-          </p>
-          <Button
-            aria-busy={uploading}
-            className="h-9 min-w-24 rounded-full px-5"
-            disabled={!canShare}
-            size="lg"
-            type="submit"
-          >
-            {uploading ? (
-              <>
-                <LoaderCircle aria-hidden="true" className="animate-spin" />
-                Sharing
-              </>
-            ) : (
-              "Share"
-            )}
-          </Button>
+          </div>
         </div>
       </form>
 
+      {/* Actions */}
+      <div className="mt-10 flex min-h-11 items-center justify-end gap-3 px-1">
+        {mediaError ? (
+          <p className="mr-auto text-xs leading-5 text-destructive" role="alert">
+            {mediaError}
+          </p>
+        ) : archiveError ? (
+          <p className="mr-auto text-xs leading-5 text-destructive" role="alert">
+            {archiveError}
+          </p>
+        ) : null}
+        <Button
+          aria-busy={uploading}
+          className="h-11 min-w-28 rounded-full px-8 text-sm font-semibold"
+          disabled={!canShare}
+          form="instant-composer-form"
+          type="submit"
+        >
+          {uploading ? (
+            <>
+              <LoaderCircle aria-hidden="true" className="animate-spin" />
+              Sharing
+            </>
+          ) : (
+            "Share"
+          )}
+        </Button>
+      </div>
+
+      {(uploadMessage || failedUpload) && (
+        <div
+          className="mt-2 grid gap-2 px-1"
+          role={uploadFailed && !retrying ? "alert" : "status"}
+        >
+          {uploadMessage ? (
+            <p
+              className={`flex items-start gap-2 text-xs ${
+                uploadFailed ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              {uploadSucceeded && (
+                <Check
+                  aria-hidden="true"
+                  className="mt-0.5 size-3.5 shrink-0"
+                />
+              )}
+              <span>{uploadMessage}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Retrying from your archive...
+            </p>
+          )}
+          <div className="flex items-center gap-3">
+            {uploadFailed && (
+              <Button
+                disabled={retrying || uploading}
+                onClick={() => void retryFailedUpload()}
+                size="xs"
+                type="button"
+                variant="outline"
+              >
+                {retrying ? (
+                  <>
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="animate-spin"
+                    />
+                    Retrying...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw aria-hidden="true" />
+                    Try again
+                  </>
+                )}
+              </Button>
+            )}
+            {uploadSucceeded && (
+              <Link
+                className="text-xs font-medium underline underline-offset-4"
+                href="/"
+              >
+                View feed
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       <input
         accept={ACCEPTED_IMAGE_TYPES.join(",")}
-        aria-label="Upload a photo"
+        aria-label="Choose a photo"
         className="sr-only"
         onChange={onFileChange}
         ref={inputRef}
@@ -883,17 +828,7 @@ export function InstantComposer() {
 }
 
 function isCaptionValid(value: string): boolean {
-  const caption = value.trim();
-  return (
-    caption.length <= 100 &&
-    !/[\r\n]/.test(value) &&
-    (caption === "" || countWords(caption) <= CAPTION_WORD_LIMIT)
-  );
-}
-
-function countWords(value: string): number {
-  const trimmed = value.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
+  return value.length <= CAPTION_MAX && !/[\r\n]/.test(value);
 }
 
 function isMirroredCamera(stream: MediaStream): boolean {

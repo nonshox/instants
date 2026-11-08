@@ -158,7 +158,7 @@ export function LinksFeedExperience({
                 {/* Instant image */}
                 <button
                   aria-label={`Open Instant by @${instant.username}`}
-                  className="group relative isolate block aspect-square w-full cursor-pointer select-none overflow-hidden rounded-md bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="group relative isolate block aspect-square w-full cursor-pointer select-none overflow-hidden rounded-[2rem] bg-muted shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] outline-none ring-1 ring-border/70 transition focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => handlePhotoClick(instant)}
                   onDoubleClick={() => void handleDoubleTap(instant)}
                   type="button"

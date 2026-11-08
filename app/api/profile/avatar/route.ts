@@ -62,14 +62,14 @@ export async function POST(request: Request) {
     return jsonError(
       400,
       "IMAGE_INVALID",
-      "Choose a JPEG, PNG, or WebP photo.",
+      "That photo can't be used. Try another one.",
     );
   }
   if (image.size === 0 || image.size > MAX_IMAGE_BYTES) {
     return jsonError(
       413,
       "IMAGE_SIZE_INVALID",
-      "Choose an image smaller than 10 MB.",
+      "That photo can't be uploaded. Try another one.",
     );
   }
 

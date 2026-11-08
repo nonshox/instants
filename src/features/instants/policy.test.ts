@@ -5,9 +5,10 @@ import { InvalidInstantImageError, optimizeImage, UnsupportedImageError } from "
 import { canViewInstant } from "./policy";
 
 describe("Instant inputs", () => {
-  it("accepts only one-line captions with up to five words", () => {
+  it("accepts only one-line captions of up to 60 characters", () => {
     expect(captionSchema.safeParse("small everyday moment").success).toBe(true);
-    expect(captionSchema.safeParse("one two three four five six").success).toBe(false);
+    expect(captionSchema.safeParse("one two three four five six seven eight nine ten").success).toBe(true);
+    expect(captionSchema.safeParse("a".repeat(61)).success).toBe(false);
     expect(captionSchema.safeParse("first line\nsecond line").success).toBe(false);
   });
 

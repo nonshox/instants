@@ -40,7 +40,7 @@ type ArchiveConfig = {
 
 type InstantViewerProps = (FeedConfig | ArchiveConfig) & { onClose: () => void };
 
-const CAPTION_WORD_LIMIT = 5;
+
 
 export function InstantViewer(props: InstantViewerProps) {
   const { onClose } = props;
@@ -106,7 +106,7 @@ export function InstantViewer(props: InstantViewerProps) {
     if (isFeed) return;
     const next = captionDraft.trim().replace(/\s+/g, " ");
     if (!isCaptionValid(next)) {
-      setCaptionError("Keep it to one line and five words or fewer.");
+      setCaptionError("Keep the caption to one short line.");
       return;
     }
     setCaptionError("");
@@ -205,7 +205,7 @@ export function InstantViewer(props: InstantViewerProps) {
         }`}
         onDoubleClick={handleDoubleTap}
       >
-        <div className="relative aspect-square h-full max-h-full max-w-full overflow-hidden">
+        <div className="relative aspect-square h-full max-h-full max-w-full overflow-hidden rounded-[1.5rem] shadow-[0_14px_40px_-12px_rgba(0,0,0,0.3)] ring-1 ring-black/10 dark:ring-white/10">
           {imageUrl && (
             <Image
               alt={imageAlt}
@@ -346,10 +346,6 @@ export function InstantViewer(props: InstantViewerProps) {
             {/* Meta strip */}
             <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               <span>{formatInstantDate(dateIso)}</span>
-              <span aria-hidden="true">·</span>
-              <span>{formatBytes(props.photo.image.size)}</span>
-              <span aria-hidden="true">·</span>
-              <span>{props.photo.mimeType.replace("image/", "").replace("jpeg", "jpg")}</span>
             </p>
 
             {/* Actions */}
@@ -434,18 +430,10 @@ const STATUS: Record<
   local: { label: "On this device", dot: "bg-black/30 dark:bg-white/50" },
 };
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kilobytes = bytes / 1024;
-  if (kilobytes < 1024) return `${kilobytes.toFixed(0)} KB`;
-  return `${(kilobytes / 1024).toFixed(1)} MB`;
-}
-
 function isCaptionValid(value: string): boolean {
   const caption = value.trim();
   return (
-    caption.length <= 100 &&
-    !/[\r\n]/.test(value) &&
-    (caption === "" || caption.split(/\s+/).length <= CAPTION_WORD_LIMIT)
+    caption.length <= 60 &&
+    !/[\r\n]/.test(value)
   );
 }

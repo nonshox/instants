@@ -63,12 +63,12 @@ export async function optimizeImage(input: Buffer): Promise<OptimizedImage> {
 
 export class InvalidInstantImageError extends Error {
   constructor() {
-    super("The selected file is not a valid supported image.");
+    super("That photo can't be used. Try another one.");
   }
 }
 
 export class UnsupportedImageError extends Error {
   constructor() {
-    super("Only valid JPEG, PNG, and WebP images are supported.");
+    super("That photo can't be used. Try another one.");
   }
 }

@@ -221,8 +221,8 @@ export const useInstantStore = create<InstantState>((set, get) => ({
   },
   updateCaption: async (instant, caption) => {
     const next = caption.trim().replace(/\s+/g, " ");
-    if (next.length > 100 || /[\r\n]/.test(next) || countWords(next) > 5) {
-      set({ archiveError: "Keep the caption to one line and five words or fewer." });
+    if (next.length > 60 || /[\r\n]/.test(next)) {
+      set({ archiveError: "Keep the caption to one short line." });
       return false;
     }
 
@@ -318,11 +318,6 @@ export const useInstantStore = create<InstantState>((set, get) => ({
   clearUploadMessage: () => set({ uploadMessage: "" }),
   reset: () => set(initialState),
 }));
-
-function countWords(value: string): number {
-  const trimmed = value.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
-}
 
 async function loadArchive(
   accountId: string,
