@@ -49,7 +49,7 @@ export async function getNotificationActors(
     queries: [
       Query.equal("$id", actorIds),
       Query.limit(100),
-      Query.select(["$id", "username"]),
+      Query.select(["$id", "username", "avatar"]),
     ],
     total: false,
   });

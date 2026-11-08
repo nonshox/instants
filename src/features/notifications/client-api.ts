@@ -9,7 +9,9 @@ export type NotificationItem = {
     | "follow_approved"
     | "new_follower"
     | "like";
+  actorId: string;
   actorUsername: string;
+  actorAvatar: string;
   instantId: string | null;
   createdAt: string;
   read: boolean;

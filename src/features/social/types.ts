@@ -34,6 +34,7 @@ export type Relationship =
   | "blocked";
 
 export type PublicProfile = {
+  id: string;
   username: string;
   name: string;
   bio: string;

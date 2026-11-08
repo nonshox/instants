@@ -1,10 +1,11 @@
 "use client";
 
-import { Ban, LoaderCircle, MoreHorizontal, UserRound } from "lucide-react";
+import { Ban, LoaderCircle, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
 import type { ConnectionItem } from "@/src/features/social/client-api";
+import { UserAvatar } from "@/app/components/user-avatar";
 
 export type SocialSectionKind = "links" | "received" | "sent";
 
@@ -69,10 +70,16 @@ export function SocialListSection({
               >
                 <Link
                   aria-label={`Open @${item.username}'s profile`}
-                  className="grid size-10 shrink-0 place-items-center rounded-full bg-background text-muted-foreground"
+                  className="shrink-0 rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                   href={`/u/${encodeURIComponent(item.username)}`}
                 >
-                  <UserRound aria-hidden="true" className="size-5" />
+                  <UserAvatar
+                    avatar={item.avatar}
+                    name={item.name}
+                    size={40}
+                    userId={item.id}
+                    username={item.username}
+                  />
                 </Link>
                 <div className="min-w-0 flex-1">
                   <Link

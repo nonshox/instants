@@ -27,6 +27,11 @@ export type CreatedInstant = {
   expires: string;
 };
 
+export type UpdatedInstantCaption = {
+  id: string;
+  caption: string;
+};
+
 export class InstantNotFoundError extends Error {
   constructor() {
     super("Instant is unavailable.");
@@ -133,6 +138,26 @@ async function deleteUploadedFile(
     );
     throw new Error("Uploaded image cleanup failed.");
   }
+}
+
+export async function updateOwnedInstantCaption(
+  ownerId: string,
+  instantId: string,
+  caption: string,
+): Promise<UpdatedInstantCaption> {
+  const instant = await getInstantRow(instantId);
+  if (!instant || instant.user !== ownerId) {
+    throw new InstantNotFoundError();
+  }
+
+  const row = await getTables().updateRow<InstantRow>({
+    databaseId: getDatabaseId(),
+    tableId: "instants",
+    rowId: instant.$id,
+    data: { cap: caption },
+  });
+
+  return { id: row.$id, caption: row.cap };
 }
 
 export async function deleteOwnedInstant(

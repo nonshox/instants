@@ -1,20 +1,24 @@
 "use client";
 
-import { Pencil, ShieldCheck } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { Camera, LoaderCircle, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PersonalPhotoLibrary } from "@/app/components/personal-photo-library";
+import { UserAvatar } from "@/app/components/user-avatar";
 import {
+  deleteAvatar,
   fetchProfile,
   saveProfile as saveProfileRequest,
+  uploadAvatar,
   type Profile,
 } from "@/src/features/profile/client-api";
 import { getApiErrorMessage } from "@/src/lib/api-client";
+
+const ACCEPTED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_AVATAR_BYTES = 10_000_000;
 
 type ProfileForm = {
   username: string;
@@ -36,9 +40,11 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [retry, setRetry] = useState(0);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -111,43 +117,110 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
     setMessage("");
   };
 
-  return (
-    <div>
-    <Card
-      aria-labelledby="profile-title"
-      className="mt-8 scroll-mt-6 gap-0 py-0 shadow-none"
-      id="profile"
-    >
-      <CardHeader className="flex flex-row items-start justify-between gap-4 border-b px-5 py-4">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Profile
-          </p>
-          <CardTitle className="text-xl font-semibold tracking-tight" id="profile-title">
-            {profile ? "Your profile" : "Create your profile"}
-          </CardTitle>
-        </div>
-        {profile && !editing && (
-          <Button
-            onClick={() => {
-              setEditing(true);
-              setMessage("");
-            }}
-            type="button"
-            variant="outline"
-          >
-            <Pencil aria-hidden="true" size={15} />
-            Edit
-          </Button>
-        )}
-      </CardHeader>
+  const changeAvatar = async (file: File | undefined) => {
+    if (!file) return;
+    setError("");
+    setMessage("");
 
-      <CardContent className="px-5 py-4">
+    if (!ACCEPTED_AVATAR_TYPES.includes(file.type)) {
+      setError("Choose a JPEG, PNG, or WebP photo.");
+      return;
+    }
+    if (file.size === 0 || file.size > MAX_AVATAR_BYTES) {
+      setError("Choose a photo smaller than 10 MB.");
+      return;
+    }
+
+    setAvatarBusy(true);
+    try {
+      const { avatar } = await uploadAvatar(file);
+      setProfile((current) => (current ? { ...current, avatar } : current));
+      setMessage("Photo updated.");
+    } catch (cause) {
+      setError(
+        getApiErrorMessage(
+          cause,
+          "We could not save your photo. Please try again.",
+        ),
+      );
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const removeAvatar = async () => {
+    setAvatarBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await deleteAvatar();
+      setProfile((current) => (current ? { ...current, avatar: "" } : current));
+      setMessage("Photo removed.");
+    } catch (cause) {
+      setError(
+        getApiErrorMessage(
+          cause,
+          "We could not remove your photo. Please try again.",
+        ),
+      );
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const canHaveAvatar = Boolean(profile);
+  const avatarButton = (
+    <button
+      aria-label="Change profile photo"
+      className="group relative block shrink-0 rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70"
+      disabled={avatarBusy || !canHaveAvatar}
+      onClick={() => avatarInputRef.current?.click()}
+      title={canHaveAvatar ? "Change profile photo" : "Save your profile first"}
+      type="button"
+    >
+      <UserAvatar
+        avatar={profile?.avatar}
+        className="size-20 sm:size-24"
+        name={form.name}
+        size={96}
+        userId={accountId}
+        username={form.username}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 grid place-items-center rounded-full bg-black/45 text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100"
+      >
+        <Camera size={18} />
+      </span>
+      {avatarBusy && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 grid place-items-center rounded-full bg-black/55 text-white"
+        >
+          <LoaderCircle className="animate-spin" size={20} />
+        </span>
+      )}
+    </button>
+  );
+
+  return (
+    <>
+      <section
+        aria-label="Profile"
+        className="scroll-mt-6"
+        id="profile"
+      >
         {loading ? (
-          <p className="py-2 text-xs text-muted-foreground">Loading profile...</p>
+          <div className="flex items-center gap-4" role="status">
+            <div className="size-20 animate-pulse rounded-full bg-muted sm:size-24" />
+            <div className="grid gap-2">
+              <div className="h-4 w-32 animate-pulse rounded-full bg-muted" />
+              <div className="h-3 w-44 animate-pulse rounded-full bg-muted" />
+            </div>
+          </div>
         ) : error && !editing ? (
-          <div>
-            <p className="my-1 text-xs leading-5 text-destructive" role="alert">
+          <div className="grid justify-items-start gap-2">
+            <p className="text-xs leading-5 text-destructive" role="alert">
               {error}
             </p>
             <Button
@@ -155,6 +228,7 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
                 setLoading(true);
                 setRetry((current) => current + 1);
               }}
+              size="sm"
               type="button"
               variant="outline"
             >
@@ -162,57 +236,73 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
             </Button>
           </div>
         ) : editing ? (
-          <form className="grid gap-4 pt-1" onSubmit={saveProfile}>
-            <div className="grid gap-2">
-              <Label htmlFor="profile-username">Username</Label>
-              <Input
-                autoComplete="username"
-                id="profile-username"
-                maxLength={30}
-                required
-                value={form.username}
-                onChange={(event) => updateField("username", event.target.value)}
-                placeholder="Choose a username"
-              />
+          <form className="grid gap-3" onSubmit={saveProfile}>
+            {!profile && (
+              <p className="text-sm font-semibold">Create your profile</p>
+            )}
+            <div className="flex items-start gap-4">
+              {avatarButton}
+              <div className="grid min-w-0 flex-1 gap-2">
+                <Input
+                  aria-label="Username"
+                  autoComplete="username"
+                  className="h-9"
+                  id="profile-username"
+                  maxLength={30}
+                  onChange={(event) => updateField("username", event.target.value)}
+                  placeholder="username"
+                  required
+                  value={form.username}
+                />
+                <Input
+                  aria-label="Name"
+                  className="h-9"
+                  id="profile-name"
+                  maxLength={50}
+                  onChange={(event) => updateField("name", event.target.value)}
+                  placeholder="Name (optional)"
+                  value={form.name}
+                />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="profile-name">Name</Label>
-              <Input
-                id="profile-name"
-                maxLength={50}
-                value={form.name}
-                onChange={(event) => updateField("name", event.target.value)}
-                placeholder="Your name (optional)"
-              />
+            <Textarea
+              aria-label="Bio"
+              className="min-h-14 resize-none text-sm"
+              id="profile-bio"
+              maxLength={160}
+              onChange={(event) => updateField("bio", event.target.value)}
+              placeholder="Bio (optional)"
+              rows={2}
+              value={form.bio}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label
+                className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+                htmlFor="profile-private"
+              >
+                <Checkbox
+                  checked={form.private}
+                  id="profile-private"
+                  onCheckedChange={(checked) => updateField("private", checked)}
+                />
+                Private account
+              </label>
+              {profile?.avatar && (
+                <Button
+                  className="text-muted-foreground"
+                  disabled={avatarBusy}
+                  onClick={() => void removeAvatar()}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Trash2 aria-hidden="true" />
+                  Remove photo
+                </Button>
+              )}
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="profile-bio">Bio</Label>
-              <Textarea
-                id="profile-bio"
-                rows={3}
-                value={form.bio}
-                onChange={(event) => updateField("bio", event.target.value)}
-                placeholder="A little about you (optional)"
-              />
-            </div>
-            <label
-              className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted p-3"
-              htmlFor="profile-private"
-            >
-              <Checkbox
-                checked={form.private}
-                id="profile-private"
-                onCheckedChange={(checked) => updateField("private", checked)}
-              />
-              <span className="grid gap-1">
-                <strong className="text-sm font-medium">Private account</strong>
-                <small className="text-[11px] leading-5 text-muted-foreground">
-                  Only linked accounts can see your Instants.
-                </small>
-              </span>
-            </label>
             {error && (
-              <p className="my-1 text-xs leading-5 text-destructive" role="alert">
+              <p className="text-xs leading-5 text-destructive" role="alert">
                 {error}
               </p>
             )}
@@ -221,57 +311,86 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
                 <Button
                   disabled={saving}
                   onClick={cancelEditing}
+                  size="sm"
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                 >
                   Cancel
                 </Button>
               )}
               <Button
-                className="min-w-[134px]"
+                className="min-w-24"
                 disabled={saving || !form.username.trim()}
+                size="sm"
                 type="submit"
               >
-                {saving
-                  ? "Saving..."
-                  : profile
-                    ? "Save changes"
-                    : "Create profile"}
+                {saving ? "Saving..." : profile ? "Save" : "Create profile"}
               </Button>
             </div>
           </form>
         ) : (
-          <>
-            <div className="py-2">
-              <p className="m-0 text-sm font-semibold">
-                @{profile?.username}
-              </p>
-              {profile?.name && (
-                <p className="mb-0 mt-2 text-xs text-muted-foreground">
-                  {profile.name}
-                </p>
-              )}
+          <div className="flex items-start gap-4">
+            {avatarButton}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="truncate text-lg font-semibold leading-6">
+                    @{profile?.username}
+                  </h1>
+                  {profile?.name && (
+                    <p className="truncate text-[13px] text-muted-foreground">
+                      {profile.name}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  aria-label="Edit profile"
+                  onClick={() => {
+                    setEditing(true);
+                    setMessage("");
+                  }}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Pencil aria-hidden="true" />
+                </Button>
+              </div>
               {profile?.bio && (
-                <p className="mb-0 mt-2 text-xs leading-5 text-muted-foreground">
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-snug">
                   {profile.bio}
                 </p>
               )}
-              <p className="mb-0 mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-                <ShieldCheck aria-hidden="true" size={15} />
-                {profile?.private ? "Private account" : "Public account"}
+              <p className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                <ShieldCheck aria-hidden="true" size={12} />
+                {profile?.private ? "Private" : "Public"}
               </p>
             </div>
-            {message && (
-              <p className="mb-0 mt-3 text-xs text-muted-foreground" role="status">
-                {message}
-              </p>
-            )}
-          </>
+          </div>
         )}
-      </CardContent>
-    </Card>
-    <PersonalPhotoLibrary accountId={accountId} />
-    </div>
+
+        {message && (
+          <p className="mt-2 text-[11px] text-muted-foreground" role="status">
+            {message}
+          </p>
+        )}
+      </section>
+
+      <input
+        accept={ACCEPTED_AVATAR_TYPES.join(",")}
+        aria-hidden="true"
+        className="sr-only"
+        onChange={(event) => {
+          void changeAvatar(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+        ref={avatarInputRef}
+        tabIndex={-1}
+        type="file"
+      />
+
+      <PersonalPhotoLibrary accountId={accountId} />
+    </>
   );
 }
 

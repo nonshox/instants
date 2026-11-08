@@ -4,6 +4,7 @@ import { Bell, CheckCheck } from "lucide-react";
 import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/app/components/user-avatar";
 import {
   Card,
   CardContent,
@@ -79,6 +80,18 @@ export function NotificationExperience() {
                     item.read ? "text-muted-foreground" : "text-foreground"
                   }`}
                 >
+                  <Link
+                    aria-label={`Open @${item.actorUsername}'s profile`}
+                    className="shrink-0 rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                    href={`/u/${encodeURIComponent(item.actorUsername)}`}
+                  >
+                    <UserAvatar
+                      avatar={item.actorAvatar}
+                      size={34}
+                      userId={item.actorId}
+                      username={item.actorUsername}
+                    />
+                  </Link>
                   <span
                     className={`size-2 shrink-0 rounded-full ${
                       item.read ? "bg-transparent" : "bg-foreground"

@@ -10,6 +10,7 @@ import {
   deleteInstant as deleteInstantRequest,
   fetchFeedPage,
   setInstantLike,
+  updateInstantCaption,
   uploadInstant,
   type FeedInstant,
 } from "./client-api";
@@ -28,6 +29,7 @@ type InstantState = {
   loadingMore: boolean;
   uploading: boolean;
   pendingDeleteId: string;
+  pendingCaptionId: string;
   pendingLikes: Set<string>;
   nextCursor: string | null;
   hasMore: boolean;
@@ -42,6 +44,7 @@ type InstantState = {
   loadFeedPage: (cursor: string | null, append: boolean) => Promise<void>;
   upload: (file: File, caption: string) => Promise<ArchivedInstant | null>;
   retryUpload: (instant: ArchivedInstant) => Promise<void>;
+  updateCaption: (instant: ArchivedInstant, caption: string) => Promise<boolean>;
   toggleLike: (instant: FeedInstant, liked: boolean) => Promise<void>;
   delete: (instant: ArchivedInstant) => Promise<void>;
   clearUploadMessage: () => void;
@@ -61,6 +64,7 @@ const initialState = {
   loadingMore: false,
   uploading: false,
   pendingDeleteId: "",
+  pendingCaptionId: "",
   pendingLikes: new Set<string>(),
   nextCursor: null,
   hasMore: false,
@@ -215,6 +219,43 @@ export const useInstantStore = create<InstantState>((set, get) => ({
       set({ pendingDeleteId: "" });
     }
   },
+  updateCaption: async (instant, caption) => {
+    const next = caption.trim().replace(/\s+/g, " ");
+    if (next.length > 100 || /[\r\n]/.test(next) || countWords(next) > 5) {
+      set({ archiveError: "Keep the caption to one line and five words or fewer." });
+      return false;
+    }
+
+    set({ pendingCaptionId: instant.localId, archiveError: "" });
+    const previous = instant;
+    const optimistic = { ...instant, caption: next };
+    try {
+      await saveArchivedInstant(optimistic);
+      set((state) => ({
+        archive: state.archive.map((item) =>
+          item.localId === instant.localId ? optimistic : item,
+        ),
+      }));
+      if (instant.serverId) {
+        await updateInstantCaption(instant.serverId, next);
+      }
+      return true;
+    } catch (cause) {
+      await saveArchivedInstant(previous).catch(() => undefined);
+      set((state) => ({
+        archive: state.archive.map((item) =>
+          item.localId === instant.localId ? previous : item,
+        ),
+        archiveError: getApiErrorMessage(
+          cause,
+          "The caption could not be saved.",
+        ),
+      }));
+      return false;
+    } finally {
+      set({ pendingCaptionId: "" });
+    }
+  },
   toggleLike: async (instant, liked) => {
     set((state) => ({
       pendingLikes: new Set(state.pendingLikes).add(instant.id),
@@ -277,6 +318,11 @@ export const useInstantStore = create<InstantState>((set, get) => ({
   clearUploadMessage: () => set({ uploadMessage: "" }),
   reset: () => set(initialState),
 }));
+
+function countWords(value: string): number {
+  const trimmed = value.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
 
 async function loadArchive(
   accountId: string,

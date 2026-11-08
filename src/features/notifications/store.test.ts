@@ -13,7 +13,9 @@ vi.mock("./client-api", () => ({
 const firstNotification = {
   id: "notification-1",
   type: "like" as const,
+  actorId: "actor-1",
   actorUsername: "friend",
+  actorAvatar: "",
   instantId: "instant-1",
   createdAt: "2026-01-01T00:00:00.000Z",
   read: false,

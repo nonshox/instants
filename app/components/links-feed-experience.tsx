@@ -4,11 +4,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Heart, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useInstantStore } from "@/src/features/instants/store";
 import { formatInstantDate } from "@/src/features/instants/format-date";
+import { UserAvatar } from "@/app/components/user-avatar";
+import { InstantViewer } from "@/app/components/instant-viewer";
 
 export function LinksFeedExperience({
   accountId,
@@ -30,6 +32,8 @@ export function LinksFeedExperience({
   const [doubleTapInstant, setDoubleTapInstant] = useState<string | null>(
     null,
   );
+  const [openInstantId, setOpenInstantId] = useState<string | null>(null);
+  const clickTimer = useRef<number | null>(null);
 
   useEffect(() => {
     void initializeFeed(accountId);
@@ -38,6 +42,10 @@ export function LinksFeedExperience({
   async function handleDoubleTap(
     instant: (typeof feed)[number],
   ) {
+    if (clickTimer.current) {
+      window.clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+    }
     setDoubleTapInstant(instant.id);
     window.setTimeout(() => setDoubleTapInstant(null), 650);
 
@@ -45,6 +53,20 @@ export function LinksFeedExperience({
       await updateLike(instant, true);
     }
   }
+
+  function handlePhotoClick(instant: (typeof feed)[number]) {
+    if (clickTimer.current) {
+      window.clearTimeout(clickTimer.current);
+    }
+    clickTimer.current = window.setTimeout(() => {
+      clickTimer.current = null;
+      setOpenInstantId(instant.id);
+    }, 280);
+  }
+
+  const viewerInstant = openInstantId
+    ? feed.find((item) => item.id === openInstantId) ?? null
+    : null;
 
   return (
     <section className="mx-auto w-full max-w-[470px]">
@@ -113,9 +135,12 @@ export function LinksFeedExperience({
               >
                 {/* Account */}
                 <header className="mb-3 flex items-center gap-3 px-1">
-                  <div className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold uppercase">
-                    {instant.username.slice(0, 1)}
-                  </div>
+                  <UserAvatar
+                    avatar={instant.avatar}
+                    size={36}
+                    userId={instant.ownerId}
+                    username={instant.username}
+                  />
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">
@@ -131,13 +156,16 @@ export function LinksFeedExperience({
                 </header>
 
                 {/* Instant image */}
-                <div
-                  className="group relative isolate aspect-square overflow-hidden rounded-xl bg-muted sm:rounded-2xl"
+                <button
+                  aria-label={`Open Instant by @${instant.username}`}
+                  className="group relative isolate block aspect-square w-full cursor-pointer select-none overflow-hidden rounded-md bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => handlePhotoClick(instant)}
                   onDoubleClick={() => void handleDoubleTap(instant)}
+                  type="button"
                 >
                   <Image
                     alt={`Instant shared by @${instant.username}`}
-                    className="object-cover transition-transform duration-500 group-hover:scale-[1.015]"
+                    className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     fill
                     sizes="(max-width: 500px) 100vw, 470px"
                     src={instant.imageUrl}
@@ -156,7 +184,7 @@ export function LinksFeedExperience({
                       />
                     </div>
                   )}
-                </div>
+                </button>
 
                 {/* Actions */}
                 <div className="flex items-center gap-3 px-1 pt-3">
@@ -216,6 +244,16 @@ export function LinksFeedExperience({
             {loadingMore ? "Loading..." : "Load more"}
           </Button>
         </div>
+      )}
+
+      {viewerInstant && (
+        <InstantViewer
+          instant={viewerInstant}
+          mode="feed"
+          onClose={() => setOpenInstantId(null)}
+          onToggleLike={(target, liked) => void updateLike(target, liked)}
+          pendingLike={pendingLikes.has(viewerInstant.id)}
+        />
       )}
     </section>
   );

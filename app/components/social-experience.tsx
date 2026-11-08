@@ -402,15 +402,6 @@ export function SocialExperience() {
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-7">
-      <header>
-        <p className="mb-1 text-sm text-muted-foreground">Your circle</p>
-        <h1 className="text-2xl font-semibold tracking-tight">Links</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A link is mutual. Send a request, and once it is accepted you both
-          share Instants with each other.
-        </p>
-      </header>
-
       <ConnectionsSearch
         error={searchError}
         loading={searching}

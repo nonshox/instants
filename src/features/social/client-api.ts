@@ -9,6 +9,7 @@ export type Relationship =
   | "blocked";
 
 export type SocialProfile = {
+  id: string;
   username: string;
   name: string;
   bio: string;
@@ -19,9 +20,11 @@ export type SocialProfile = {
 };
 
 export type ConnectionItem = {
+  id?: string;
   username: string;
   name?: string;
   private?: boolean;
+  avatar?: string;
 };
 export type ConnectionPage = {
   items: ConnectionItem[];

@@ -15,7 +15,9 @@ const maxScanned = 500;
 
 export type FeedInstant = {
   id: string;
+  ownerId: string;
   username: string;
+  avatar: string;
   caption: string;
   likes: number;
   likedByViewer: boolean;
@@ -83,7 +85,9 @@ export async function getFeedPage(
         }
         items.push({
           id: row.$id,
+          ownerId: row.user,
           username: owner.username,
+          avatar: owner.avatar ?? "",
           caption: row.cap,
           likes: row.likes,
           likedByViewer: false,
@@ -203,7 +207,7 @@ async function getProfiles(userIds: string[]): Promise<Map<string, UserPrivacyRo
     queries: [
       Query.equal("$id", userIds),
       Query.limit(querySize),
-      Query.select(["$id", "username", "private"]),
+      Query.select(["$id", "username", "private", "avatar"]),
     ],
     total: false,
   });

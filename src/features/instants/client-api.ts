@@ -2,7 +2,9 @@ import { apiClient } from "@/src/lib/api-client";
 
 export type FeedInstant = {
   id: string;
+  ownerId: string;
   username: string;
+  avatar: string;
   caption: string;
   likes: number;
   likedByViewer: boolean;
@@ -51,6 +53,16 @@ export async function setInstantLike(
     method: liked ? "PUT" : "DELETE",
   });
   return data.like;
+}
+
+export async function updateInstantCaption(
+  instantId: string,
+  caption: string,
+): Promise<{ id: string; caption: string }> {
+  const { data } = await apiClient.patch<{
+    instant: { id: string; caption: string };
+  }>(`/instants/${encodeURIComponent(instantId)}`, { caption });
+  return data.instant;
 }
 
 export async function deleteInstant(instantId: string): Promise<void> {

@@ -35,6 +35,12 @@ are temporary.
 -   Links are mutual: one canonical row per pair, no matter who asked.
 -   All authorization is server-side; never trust browser-side
     visibility checks.
+-   Profiles may carry one avatar photo. Avatars are square-cropped,
+    re-encoded server-side (WebP), stored privately in Storage, and
+    served only through an authorized Next.js route. The `users.avatar`
+    column holds the Appwrite file ID.
+-   Avatar replacement and removal are immediate; the previous file is
+    deleted after the profile row is updated.
 
 ### Instants and feed
 
@@ -66,6 +72,17 @@ are temporary.
     record; it must retain the IndexedDB copy.
 -   Manual deletion is different: remove both Appwrite image/post and
     the corresponding IndexedDB copy permanently.
+-   Personal gallery is a compact grid of small square thumbnails with
+    no like cards, filters, search, or sorting. Shared status is shown
+    as a subtle badge on the thumbnail only.
+-   Opening a photo, in one click, shows a detail view with the photo,
+    its caption (inline edit, one line, at most five words), sync
+    status, original date, file size, format, retry for failed shares,
+    and delete with an inline confirmation.
+-   Caption edits on a shared photo are stored server-side in
+    `instants.cap` through an owner-only endpoint and mirrored to the
+    IndexedDB archive; edits on local-only photos update only the local
+    archive.
 -   Personal gallery is private to its owner.
 
 ### Social interactions
@@ -123,6 +140,34 @@ typography; generous whitespace; intuitive navigation; no clutter or
 engagement bait. Use shadcn/ui extensively and Lucide icons. Responsive
 web app. Disable buttons when required inputs are empty/invalid.
 
+-   Small screens get a compact full-width bottom bar (Links, Create,
+    Feed, Profile) that hides at the `md` breakpoint and respects the
+    safe-area inset: icon-only items, muted inactive glyphs, a tiny dot
+    under the active destination, and a subtle top elevation shadow so
+    it separates cleanly from content. Notifications lives in the top
+    navbar (a bell with an unread badge) on every screen size, next to
+    the avatar menu, which contains only Profile, Settings, and sign
+    out. A back control is available in the navbar on all screen sizes.
+-   Tapping a feed photo opens the same light, full-screen Instant
+    viewer used everywhere: a soft ambient backdrop tinted by the
+    photo, author and date up top, a close button, the square photo,
+    caption, and a like action. Double-tapping the photo (in feed or
+    viewer) likes it.
+-   The profile photo gallery uses the same full-screen viewer with an
+    archive-focused footer: status pill (Shared/Sharing/On this
+    device/Not shared), inline caption editing, a compact meta strip
+    (date · size · format), share retry for failed uploads, and delete
+    with inline two-step confirmation.
+-   Desktop shows a sticky, blurred top bar with a centered pill of
+    text links (Links, Create, Feed) mirroring the mobile bar's order
+    and destinations; active links are highlighted, and the bar stays
+    pinned with a subtle backdrop blur while scrolling.
+-   The app is responsive end to end (fluid grids, flexible media,
+    `dvh`/`svh` layouts, safe-area insets). The viewport is configured
+    with `interactive-widget=resizes-content` so the layout shrinks
+    when the on-screen keyboard opens; text inputs render at 16px on
+    small screens so iOS does not auto-zoom on focus.
+
 ## 4. Technology stack
 
 -   Latest stable Next.js + TypeScript
@@ -154,11 +199,16 @@ web app. Disable buttons when required inputs are empty/invalid.
     keyed by the canonical file ID in `instants.image`. Recheck
     ownership, link, privacy, block, and expiry rules before returning
     image bytes. Never expose a public permanent Storage URL.
+-   Avatars are delivered through an authorized route keyed by the
+    target user ID; the server resolves `users.avatar` internally and
+    applies the same self/link/block/privacy checks before returning
+    bytes.
 -   Validate all input and IDs; never trust client-provided user IDs or
     ownership claims.
 -   Suggested route capabilities: auth/profile sync; profile
-    lookup/update; link/request/accept/decline/cancel; feed; Instant
-    upload/retrieval/manual delete; like/unlike; notifications/read
+    lookup/update; avatar upload/removal/delivery; link/request/accept/
+    decline/cancel; feed; Instant upload/retrieval/manual
+    delete/caption update; like/unlike; notifications/read
     state; block/unblock; Telegram link/webhook; session management;
     cron cleanup.
 -   Keep route handlers thin and business logic in server-side service
@@ -390,7 +440,10 @@ hardcode secrets or commit `.env`.
 Authentication/profile: - Valid, invalid, expired code; rate limits and
 excessive attempts. - Profile creation and email synchronization. -
 Unique username/email constraints. - Session listing, revocation,
-logout.
+logout. - Avatar upload/replacement/removal; avatar bytes are authorized for
+    the owner, linked accounts of private accounts, and signed-in viewers
+    of public accounts. Private avatars stay hidden from non-linked
+    viewers and from blocked accounts in both directions.
 
 Privacy/relationships: - Private profile inaccessible to
 non-linked accounts. - Pending request grants no access. - Acceptance
@@ -438,7 +491,19 @@ deletion retains row for retry. - Batch processing and safe logs.
 -   Server-side OTP verification and HttpOnly Appwrite session cookie.
 -   Native Appwrite session listing, individual revocation, and logout.
 -   Authenticated profile onboarding and editing through the existing
-      `users` table, with server-side identity and row ownership.
+    `users` table, with server-side identity and row ownership.
+-   Avatar upload/removal through `/api/profile/avatar` (square-cropped
+    WebP stored privately in Storage; `users.avatar` holds the file ID)
+    and authorized delivery through `/api/avatars/[userId]`, enforced for
+    the owner, linked accounts of private accounts, signed-in viewers of
+    public accounts, and both block directions. Avatars render across the
+    workspace: header menu, profile, public profiles, links, search,
+    blocked-account list, feed, and notifications.
+-   Personal photo library rebuilt as a compact square grid with no like
+    cards, filters, search, or sorting; one click opens a detail view
+    with inline caption editing (`PATCH /api/instants/[instantId]`),
+    sync status, original date, size, format, retry, and delete with
+    inline confirmation.
 -   Username lookup and transactional mutual-link requests,
     acceptance/decline/cancellation, bidirectional block cleanup, and
     transactional counter updates.

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -31,6 +31,15 @@ export const metadata: Metadata = {
     ],
     apple: "/logotype/apple-touch-icon.png",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  // Shrink the layout viewport when the on-screen keyboard opens so fixed
+  // bars sit above it and 100dvh layouts stay visible.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

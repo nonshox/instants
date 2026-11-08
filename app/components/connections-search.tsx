@@ -1,10 +1,11 @@
 "use client";
 
-import { Ban, LoaderCircle, Search, UserRound } from "lucide-react";
+import { Ban, LoaderCircle, Search } from "lucide-react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { UserAvatar } from "@/app/components/user-avatar";
 import type { SocialProfile } from "@/src/features/social/client-api";
 
 export function ConnectionsSearch({
@@ -32,15 +33,10 @@ export function ConnectionsSearch({
 }) {
   return (
     <section aria-labelledby="search-title" className="max-w-2xl">
-      <div>
-        <h2 className="text-base font-semibold" id="search-title">
-          Find someone
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Search by their Mono username to send a link request.
-        </p>
-      </div>
-      <form className="mt-4 flex gap-2" onSubmit={onSearch}>
+      <label className="text-base font-semibold" id="search-title">
+        Find someone
+      </label>
+      <form className="mt-2 flex gap-2" onSubmit={onSearch}>
         <div className="relative min-w-0 flex-1">
           <Search
             aria-hidden="true"
@@ -85,10 +81,16 @@ export function ConnectionsSearch({
           <div className="flex min-w-0 items-center gap-3">
             <Link
               aria-label={`Open @${profile.username}'s profile`}
-              className="grid size-10 shrink-0 place-items-center rounded-full bg-background text-muted-foreground"
+              className="shrink-0 rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
               href={`/u/${encodeURIComponent(profile.username)}`}
             >
-              <UserRound aria-hidden="true" className="size-5" />
+              <UserAvatar
+                avatar={profile.avatar}
+                name={profile.name}
+                size={40}
+                userId={profile.id}
+                username={profile.username}
+              />
             </Link>
             <div className="min-w-0">
               <Link
@@ -132,7 +134,10 @@ export function ConnectionsSearch({
                 >
                   {pending === profile.username ? (
                     <>
-                      <LoaderCircle aria-hidden="true" className="animate-spin" />
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="animate-spin"
+                      />
                       Updating...
                     </>
                   ) : profile.relationship === "linked" ? (

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Ban, LoaderCircle, MoreHorizontal, Shield, UserRound } from "lucide-react";
+import { Ban, LoaderCircle, MoreHorizontal, Shield } from "lucide-react";
 import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/app/components/user-avatar";
 import {
   removeLink,
   requestLink,
@@ -109,9 +110,14 @@ export function PublicProfileExperience({ username }: { username: string }) {
   return (
     <article className="mx-auto max-w-xl">
       <header className="flex items-start gap-4">
-        <span className="grid size-16 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
-          <UserRound aria-hidden="true" className="size-7" />
-        </span>
+        <UserAvatar
+          avatar={profile.avatar}
+          className="mt-0.5"
+          name={profile.name}
+          size={64}
+          userId={profile.id}
+          username={profile.username}
+        />
         <div className="min-w-0 flex-1">
           <p className="truncate text-lg font-semibold">
             {profile.name || `@${profile.username}`}

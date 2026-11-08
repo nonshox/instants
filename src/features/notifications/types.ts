@@ -22,7 +22,9 @@ export type NotificationRow = Models.Row & {
 export type NotificationItem = {
   id: string;
   type: NotificationType;
+  actorId: string;
   actorUsername: string;
+  actorAvatar: string;
   instantId: string | null;
   createdAt: string;
   read: boolean;

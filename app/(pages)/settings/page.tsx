@@ -1,8 +1,7 @@
-import { AccountExperience } from "@/app/components/account-experience";
+import { SettingsExperience } from "@/app/components/settings-experience";
 import { getCurrentAccountData } from "@/src/features/auth/session";
 import { SessionExpired } from "@/app/components/workspace-shell";
 import { Suspense } from "react";
-import { PrivacySettings } from "@/app/components/privacy-settings";
 
 export default function SettingsPage() {
   return (
@@ -24,13 +23,8 @@ async function AuthenticatedSettings() {
     return <SessionExpired />;
   }
 
-  return (
-    <>
-      <AccountExperience
-        email={accountData.user.email}
-        initialSessions={accountData.sessions}
-      />
-      <PrivacySettings />
-    </>
-  );
+  return <SettingsExperience
+    email={accountData.user.email}
+    initialSessions={accountData.sessions}
+  />;
 }

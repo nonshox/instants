@@ -83,6 +83,7 @@ function toPublicProfile(
   showDetails: boolean,
 ): PublicProfile {
   return {
+    id: row.$id,
     username: row.username,
     name: showDetails ? row.name : "",
     bio: showDetails ? row.bio : "",
@@ -144,7 +145,15 @@ export async function listConnections(
       const id = row.follower === userId ? row.following : row.follower;
       const user = users.get(id);
       if (!user || blockedIds.has(id)) return [];
-      return [{ username: user.username, name: user.name, private: user.private }];
+      return [
+        {
+          id: user.$id,
+          username: user.username,
+          name: user.name,
+          private: user.private,
+          avatar: user.avatar,
+        },
+      ];
     }),
     nextCursor:
       result.rows.length > 25
@@ -174,7 +183,9 @@ export async function listBlockedAccounts(
   return {
     items: pageRows.flatMap((row) => {
       const user = users.get(row.blocked);
-      return user ? [{ username: user.username, name: user.name }] : [];
+      return user
+        ? [{ id: user.$id, username: user.username, name: user.name, avatar: user.avatar }]
+        : [];
     }),
     nextCursor:
       result.rows.length > 25
@@ -184,9 +195,11 @@ export async function listBlockedAccounts(
 }
 
 type ConnectionItem = {
+  id?: string;
   username: string;
   name?: string;
   private?: boolean;
+  avatar?: string;
 };
 
 type ConnectionPage = {
@@ -225,7 +238,14 @@ async function listRequestRows(
       const id = key === "target" ? row.requester : row.target;
       const user = users.get(id);
       return user && !blockedIds.has(id)
-        ? [{ username: user.username, name: user.name }]
+        ? [
+            {
+              id: user.$id,
+              username: user.username,
+              name: user.name,
+              avatar: user.avatar,
+            },
+          ]
         : [];
     }),
     nextCursor:
@@ -244,7 +264,7 @@ async function getUsers(userIds: string[]): Promise<Map<string, UserRow>> {
     queries: [
       Query.equal("$id", userIds),
       Query.limit(100),
-      Query.select(["$id", "username", "name", "private", "links"]),
+      Query.select(["$id", "username", "name", "private", "links", "avatar"]),
     ],
     total: false,
   });

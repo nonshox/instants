@@ -139,6 +139,19 @@ input {
   font: inherit;
 }
 
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 767px) {
+  /* iOS auto-zooms focused inputs smaller than 16px; keep forms at 16px. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -26,6 +26,7 @@ export type BlockRow = Models.Row & {
 
 export type UserPrivacyRow = Models.Row & {
   username: string;
+  avatar: string;
   private: boolean;
 };
 

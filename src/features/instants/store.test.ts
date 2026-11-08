@@ -15,7 +15,9 @@ vi.mock("./client-api", () => ({
 
 const instant: FeedInstant = {
   id: "instant-1",
+  ownerId: "owner-1",
   username: "friend",
+  avatar: "",
   caption: "",
   likes: 1,
   likedByViewer: false,

@@ -24,3 +24,14 @@ export async function saveProfile(
     : await apiClient.post<{ profile: Profile }>("/profile", input);
   return data.profile;
 }
+
+export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
+  const form = new FormData();
+  form.append("image", file);
+  const { data } = await apiClient.post<{ avatar: string }>("/profile/avatar", form);
+  return data;
+}
+
+export async function deleteAvatar(): Promise<void> {
+  await apiClient.delete("/profile/avatar");
+}

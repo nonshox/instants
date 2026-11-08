@@ -30,5 +30,5 @@ async function ProtectedWorkspace({
     redirect("/auth");
   }
 
-  return <WorkspaceShell>{children}</WorkspaceShell>;
+  return <WorkspaceShell accountId={account.$id}>{children}</WorkspaceShell>;
 }

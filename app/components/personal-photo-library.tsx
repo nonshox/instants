@@ -1,216 +1,170 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ImagePlus,
-  RefreshCw,
-  Search,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ImagePlus, RefreshCw, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { ArchivedInstant } from "@/src/features/instants/archive";
 import { useInstantStore } from "@/src/features/instants/store";
 import { PhotoLibraryTile } from "@/app/components/photo-library-tile";
-import { PhotoPreviewDialog } from "@/app/components/photo-preview-dialog";
-
-type PhotoFilter = "all" | "shared" | "device" | "retry";
-
-const filters: { id: PhotoFilter; label: string }[] = [
-  { id: "all", label: "All photos" },
-  { id: "shared", label: "Shared" },
-  { id: "device", label: "On this device" },
-  { id: "retry", label: "Needs retry" },
-];
+import { InstantViewer } from "@/app/components/instant-viewer";
 
 export function PersonalPhotoLibrary({ accountId }: { accountId: string }) {
   const photos = useInstantStore((state) => state.archive);
   const loading = useInstantStore((state) => state.archiveLoading);
   const error = useInstantStore((state) => state.archiveError);
   const pendingId = useInstantStore((state) => state.pendingDeleteId);
+  const pendingCaptionId = useInstantStore((state) => state.pendingCaptionId);
   const initialize = useInstantStore((state) => state.initializeArchive);
   const refresh = useInstantStore((state) => state.refreshArchive);
   const retryShare = useInstantStore((state) => state.retryUpload);
   const deletePhoto = useInstantStore((state) => state.delete);
-  const [filter, setFilter] = useState<PhotoFilter>("all");
-  const [query, setQuery] = useState("");
-  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const updateCaption = useInstantStore((state) => state.updateCaption);
   const [selected, setSelected] = useState<ArchivedInstant | null>(null);
+  const [retryingAll, setRetryingAll] = useState(false);
   const closePreview = useCallback(() => setSelected(null), []);
 
   useEffect(() => {
     void initialize(accountId);
   }, [accountId, initialize]);
 
-  const visiblePhotos = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase();
-    return photos
-      .filter((photo) => {
-        const matchesFilter =
-          filter === "all" ||
-          (filter === "shared" && photo.syncState === "uploaded") ||
-          (filter === "device" && photo.syncState === "local") ||
-          (filter === "retry" && photo.syncState === "failed");
-        const matchesQuery =
-          !normalizedQuery ||
-          photo.caption.toLocaleLowerCase().includes(normalizedQuery);
-        return matchesFilter && matchesQuery;
-      })
-      .sort((first, second) =>
-        sortOrder === "newest"
-          ? second.originalDate - first.originalDate
-          : first.originalDate - second.originalDate,
-      );
-  }, [filter, photos, query, sortOrder]);
+  const orderedPhotos = [...photos].sort(
+    (first, second) => second.originalDate - first.originalDate,
+  );
+  const failedPhotos = photos.filter((photo) => photo.syncState === "failed");
+
+  const retryFailed = async () => {
+    if (retryingAll || failedPhotos.length === 0) return;
+    setRetryingAll(true);
+    try {
+      for (const photo of failedPhotos) {
+        await retryShare(photo);
+      }
+    } finally {
+      setRetryingAll(false);
+    }
+  };
 
   const permanentlyDelete = async (photo: ArchivedInstant) => {
-    if (
-      !window.confirm(
-        "Permanently delete this photo from your device and, if shared, from Mono?",
-      )
-    ) {
-      return;
-    }
     if (selected?.localId === photo.localId) setSelected(null);
     await deletePhoto(photo);
   };
+
   const selectedPhoto = selected
     ? photos.find((photo) => photo.localId === selected.localId) ?? selected
     : null;
 
   return (
-    <section aria-labelledby="photos-title" className="mt-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="mb-1 text-sm text-muted-foreground">Only you can see these</p>
-          <h2 className="text-xl font-semibold tracking-tight" id="photos-title">
-            Your photos
+    <section aria-labelledby="photos-title" className="mt-6 border-t border-border/60 pt-4">
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-sm font-semibold" id="photos-title">
+            Photos
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Shared photos expire; your saved copies stay here.
-          </p>
+          {photos.length > 0 && (
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              {photos.length}
+            </span>
+          )}
         </div>
-        <Button
-          aria-label="Refresh your photos"
-          disabled={loading}
-          onClick={() => void refresh()}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <RefreshCw
-            aria-hidden="true"
-            className={loading ? "animate-spin" : ""}
-          />
-        </Button>
-      </header>
-
-      <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="relative">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            aria-label="Search captions"
-            className="pl-9"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search captions"
-            type="search"
-            value={query}
-          />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          Sort
-          <select
-            aria-label="Sort photos"
-            className="h-9 rounded-lg bg-background px-3 text-sm text-foreground ring-1 ring-border outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onChange={(event) =>
-              setSortOrder(event.target.value as "newest" | "oldest")
-            }
-            value={sortOrder}
-          >
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-          </select>
-        </label>
-      </div>
-
-      <div
-        aria-label="Filter photos"
-        className="mt-4 flex gap-1 overflow-x-auto pb-1"
-        role="group"
-      >
-        {filters.map((item) => (
+        <div className="flex items-center gap-0.5">
           <Button
-            aria-pressed={filter === item.id}
-            className="shrink-0"
-            key={item.id}
-            onClick={() => setFilter(item.id)}
-            size="sm"
+            aria-label="Create an Instant"
+            nativeButton={false}
+            render={<Link href="/create" />}
+            size="icon-sm"
             type="button"
-            variant={filter === item.id ? "secondary" : "ghost"}
+            variant="ghost"
           >
-            {item.label}
-            {item.id === "all" && (
-              <span className="text-xs text-muted-foreground">{photos.length}</span>
-            )}
+            <ImagePlus aria-hidden="true" />
           </Button>
-        ))}
-      </div>
-
-      {error && (
-        <div className="mt-4 flex items-center justify-between gap-3" role="alert">
-          <p className="text-sm text-destructive">{error}</p>
           <Button
+            aria-label="Refresh your photos"
             disabled={loading}
             onClick={() => void refresh()}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={loading ? "animate-spin" : ""}
+            />
+          </Button>
+        </div>
+      </header>
+
+      {failedPhotos.length > 0 && (
+        <div
+          className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2"
+          role="status"
+        >
+          <p className="inline-flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+            <TriangleAlert aria-hidden="true" className="size-3.5" />
+            {failedPhotos.length} photo{failedPhotos.length === 1 ? "" : "s"} not shared
+          </p>
+          <Button
+            disabled={retryingAll || loading}
+            onClick={() => void retryFailed()}
+            size="xs"
             type="button"
             variant="outline"
           >
-            Try again
+            {retryingAll ? "Retrying..." : "Retry"}
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-3 flex items-center justify-between gap-3" role="alert">
+          <p className="text-xs text-destructive">{error}</p>
+          <Button
+            disabled={loading}
+            onClick={() => void refresh()}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Retry
           </Button>
         </div>
       )}
 
       {loading && photos.length === 0 ? (
-        <p className="py-8 text-sm text-muted-foreground" role="status">
-          Loading your photos...
-        </p>
-      ) : visiblePhotos.length === 0 ? (
-        <div className="grid justify-items-center gap-3 py-12 text-center">
-          <span className="grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
+        <div
+          className="mt-3 grid grid-cols-4 gap-1.5 sm:grid-cols-5 sm:gap-2 md:grid-cols-6"
+          role="status"
+        >
+          {Array.from({ length: 10 }, (_, index) => (
+            <div
+              aria-hidden="true"
+              className="aspect-square animate-pulse rounded-lg bg-muted"
+              key={index}
+            />
+          ))}
+        </div>
+      ) : photos.length === 0 ? (
+        <div className="grid justify-items-center gap-2 py-10 text-center">
+          <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
             <ImagePlus aria-hidden="true" className="size-5" />
           </span>
-          <div>
-            <p className="text-sm font-medium">
-              {photos.length === 0 ? "Your photo collection starts here" : "No photos found"}
-            </p>
-            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-              {photos.length === 0
-                ? "Create an Instant to keep a private copy here."
-                : "Try another search or filter."}
-            </p>
-          </div>
-          {photos.length === 0 && (
-            <Button
-              nativeButton={false}
-              render={<Link href="/create" />}
-              variant="outline"
-            >
-              Create an Instant
-            </Button>
-          )}
+          <p className="text-xs text-muted-foreground">No photos yet.</p>
+          <Button
+            nativeButton={false}
+            render={<Link href="/create" />}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Create an Instant
+          </Button>
         </div>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {visiblePhotos.map((photo) => (
+        <div className="mt-3 grid grid-cols-4 gap-1.5 sm:grid-cols-5 sm:gap-2 md:grid-cols-6">
+          {orderedPhotos.map((photo) => (
             <PhotoLibraryTile
               key={photo.localId}
-              onDelete={() => void permanentlyDelete(photo)}
               onPreview={() => setSelected(photo)}
-              onRetry={() => void retryShare(photo)}
-              pending={pendingId === photo.localId}
               photo={photo}
             />
           ))}
@@ -218,10 +172,14 @@ export function PersonalPhotoLibrary({ accountId }: { accountId: string }) {
       )}
 
       {selectedPhoto && (
-        <PhotoPreviewDialog
+        <InstantViewer
+          captionPending={pendingCaptionId === selectedPhoto.localId}
+          key={selectedPhoto.localId}
+          mode="archive"
           onClose={closePreview}
           onDelete={() => void permanentlyDelete(selectedPhoto)}
           onRetry={() => void retryShare(selectedPhoto)}
+          onUpdateCaption={(caption) => updateCaption(selectedPhoto, caption)}
           pending={pendingId === selectedPhoto.localId}
           photo={selectedPhoto}
         />
