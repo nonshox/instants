@@ -40,6 +40,9 @@ are temporary.
 
 -   Photos only in v1.
 -   Caption optional, one line, maximum five words. Enforce in API.
+-   Create is a compact single-square composer: choose, drag, paste, or
+    capture a photo, crop it to 1:1, archive it locally first, then
+    share. Failed shares can be retried inline from the archived copy.
 -   Owner can manually delete any Instant at any time.
 -   Daily automatic cleanup deletes shared Appwrite image and post
     record only once at least 36 hours old. Since cleanup is daily, a

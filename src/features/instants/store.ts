@@ -40,7 +40,7 @@ type InstantState = {
   initializeFeed: (accountId: string) => Promise<void>;
   refreshArchive: () => Promise<void>;
   loadFeedPage: (cursor: string | null, append: boolean) => Promise<void>;
-  upload: (file: File, caption: string) => Promise<boolean>;
+  upload: (file: File, caption: string) => Promise<ArchivedInstant | null>;
   retryUpload: (instant: ArchivedInstant) => Promise<void>;
   toggleLike: (instant: FeedInstant, liked: boolean) => Promise<void>;
   delete: (instant: ArchivedInstant) => Promise<void>;
@@ -113,7 +113,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
     loadFeed(cursor, append, set, get().accountId),
   upload: async (file, caption) => {
     const accountId = get().accountId;
-    if (!accountId) return false;
+    if (!accountId) return null;
 
     set({ uploading: true, uploadMessage: "", archiveError: "" });
     const localInstant = createLocalInstant(
@@ -134,7 +134,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
           "The photo was not uploaded because it could not be saved to your local archive.",
         uploading: false,
       });
-      return false;
+      return null;
     }
 
     try {
@@ -157,7 +157,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
         uploadMessage: "Instant shared and saved to your local archive.",
       }));
       await loadFeed(null, false, set, accountId);
-      return true;
+      return savedInstant;
     } catch (cause) {
       const failedInstant = { ...pendingInstant, syncState: "failed" as const };
       try {
@@ -179,7 +179,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
           "Sharing failed; your local copy is safe.",
         ),
       });
-      return false;
+      return failedInstant;
     } finally {
       set({ uploading: false });
     }
