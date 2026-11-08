@@ -1,7 +1,7 @@
 # Instant
 
 Instant is a privacy-first photo-sharing web app for sharing everyday
-photos with chosen or approved followers. Its product requirements and
+photos with linked accounts. Its product requirements and
 Appwrite schema are defined in [SYSTEM ARCHITECTURE.md](./SYSTEM%20ARCHITECTURE.md).
 
 ## Current implementation
@@ -14,20 +14,20 @@ The current application foundation includes:
   Appwrite Auth sessions.
 - A private-by-default `users` row created at first successful sign-in,
   with an editable generated username and profile settings.
-- Username lookup, privacy-aware profile details, public/private follow
-  and request flows, incoming request approval/rejection, and blocking.
-  Follow/block changes and cached counters use Appwrite transactions.
-- A following feed with server-side visibility and block filtering,
+- Username lookup, privacy-aware profile details, mutual link requests,
+  acceptance/decline/cancellation, and blocking. Link/block changes and
+  cached counters use Appwrite transactions.
+- A links feed with server-side visibility and block filtering,
   private server-mediated image delivery, and manual Instant deletion.
 - JPEG, PNG, and WebP validation/re-encoding for uploads, with private
   Appwrite Storage files and a complete owner-only IndexedDB archive.
 - Idempotent like/unlike actions with server-side counters and in-app
   notifications.
 - Paginated notification inbox, read state, and filtering of blocked users.
-- Paginated follower/following lists, received and sent follow requests,
+- Paginated link lists, received and sent link requests,
   public user profiles, and privacy controls for blocked accounts.
 - One-time hashed Telegram linking, webhook verification, disconnect, and
-  message delivery for likes, follow requests, approvals, and new followers.
+  message delivery for likes, link requests, and link acceptances.
 - A protected daily Vercel Cron for expired Instants and Telegram tokens.
 - Tailwind CSS and shadcn/ui components for the application interface.
 - Feature-scoped Zustand stores for shared Instant and notification UI

@@ -7,10 +7,9 @@ import {
   socialFailure,
 } from "@/src/features/social/http";
 import {
+  linkByUsername,
   listConnections,
-  followByUsername,
-  removeFollower,
-  removeRelationship,
+  unlinkByUsername,
 } from "@/src/features/social/service";
 import {
   connectionListSchema,
@@ -23,26 +22,21 @@ export async function GET(request: Request) {
   const auth = await getSocialAccount();
   if ("response" in auth) return auth.response;
   if (!auth.account) {
-    return jsonError(401, "UNAUTHENTICATED", "Sign in to view connections.");
+    return jsonError(401, "UNAUTHENTICATED", "Sign in to view your links.");
   }
   const params = new URL(request.url).searchParams;
   const parsed = connectionListSchema.safeParse({
-    kind: params.get("kind"),
     cursor: params.get("cursor") ?? undefined,
   });
   if (!parsed.success) {
-    return jsonError(400, "INVALID_INPUT", "Choose a valid connection list.");
+    return jsonError(400, "INVALID_INPUT", "Choose a valid links list.");
   }
   try {
     return NextResponse.json(
-      await listConnections(
-        auth.account.$id,
-        parsed.data.kind,
-        parsed.data.cursor ?? null,
-      ),
+      await listConnections(auth.account.$id, parsed.data.cursor ?? null),
     );
   } catch (error) {
-    return socialFailure("Connections list", error);
+    return socialFailure("Links list", error);
   }
 }
 
@@ -56,7 +50,7 @@ export async function POST(request: Request) {
     return auth.response;
   }
   if (!auth.account) {
-    return jsonError(401, "UNAUTHENTICATED", "Sign in to follow accounts.");
+    return jsonError(401, "UNAUTHENTICATED", "Sign in to link accounts.");
   }
   const parsed = await parseSocialInput(request, relationshipInputSchema);
   if (!parsed.success) {
@@ -64,13 +58,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const relationship = await followByUsername(
+    const relationship = await linkByUsername(
       auth.account.$id,
       parsed.data.username,
     );
     return NextResponse.json({ relationship });
   } catch (error) {
-    return socialFailure("Follow action", error);
+    return socialFailure("Link action", error);
   }
 }
 
@@ -84,7 +78,7 @@ export async function DELETE(request: Request) {
     return auth.response;
   }
   if (!auth.account) {
-    return jsonError(401, "UNAUTHENTICATED", "Sign in to unfollow accounts.");
+    return jsonError(401, "UNAUTHENTICATED", "Sign in to manage links.");
   }
   const parsed = relationshipInputSchema.safeParse({
     username: new URL(request.url).searchParams.get("username"),
@@ -94,13 +88,9 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    if (new URL(request.url).searchParams.get("direction") === "follower") {
-      await removeFollower(auth.account.$id, parsed.data.username);
-    } else {
-      await removeRelationship(auth.account.$id, parsed.data.username);
-    }
+    await unlinkByUsername(auth.account.$id, parsed.data.username);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return socialFailure("Unfollow action", error);
+    return socialFailure("Unlink action", error);
   }
 }

@@ -1,6 +1,6 @@
 import "server-only";
 import { ID, Query, type Models } from "node-appwrite";
-import { runTransaction } from "@/src/features/social/data";
+import { findLink, runTransaction } from "@/src/features/social/data";
 import { canViewInstant } from "./policy";
 import {
   getDatabaseId,
@@ -142,19 +142,19 @@ async function assertCanLike(viewerId: string, instant: InstantRow): Promise<voi
   }
 
   const isOwner = viewerId === instant.user;
-  let isFollowing = false;
+  let isLinked = false;
   let isBlocked = false;
   if (!isOwner) {
-    const [follow, blockedByViewer, blockedViewer] = await Promise.all([
-      getRelationship("follows", "follower", viewerId, "following", instant.user),
-      getRelationship("blocks", "blocker", viewerId, "blocked", instant.user),
-      getRelationship("blocks", "blocker", instant.user, "blocked", viewerId),
+    const [link, blockedByViewer, blockedViewer] = await Promise.all([
+      findLink(viewerId, instant.user),
+      findBlock(viewerId, instant.user),
+      findBlock(instant.user, viewerId),
     ]);
-    isFollowing = Boolean(follow);
+    isLinked = Boolean(link);
     isBlocked = Boolean(blockedByViewer || blockedViewer);
   }
 
-  if (!canViewInstant(owner.private, isOwner, isFollowing, isBlocked)) {
+  if (!canViewInstant(owner.private, isOwner, isLinked, isBlocked)) {
     throw new InstantNotFoundError();
   }
 }
@@ -176,19 +176,16 @@ async function findLike(
   return result.rows[0] ?? null;
 }
 
-async function getRelationship(
-  tableId: "follows" | "blocks",
-  firstKey: "follower" | "blocker",
-  firstId: string,
-  secondKey: "following" | "blocked",
-  secondId: string,
+async function findBlock(
+  blockerId: string,
+  blockedId: string,
 ): Promise<Models.Row | null> {
   const result = await getTables().listRows<Models.Row>({
     databaseId: getDatabaseId(),
-    tableId,
+    tableId: "blocks",
     queries: [
-      Query.equal(firstKey, firstId),
-      Query.equal(secondKey, secondId),
+      Query.equal("blocker", blockerId),
+      Query.equal("blocked", blockedId),
       Query.limit(1),
     ],
     total: false,

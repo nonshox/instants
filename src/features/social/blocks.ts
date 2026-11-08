@@ -1,18 +1,15 @@
 import "server-only";
 import { ID } from "node-appwrite";
 import {
+  findLink,
   findRelationship,
   findUserByUsername,
   getDatabaseId,
   getTables,
-  removeFollowInTransaction,
+  removeLinkInTransaction,
   runTransaction,
 } from "./data";
-import {
-  SocialError,
-  type BlockRow,
-  type RelationshipRow,
-} from "./types";
+import { SocialError, type BlockRow, type RequestRow } from "./types";
 
 export async function blockByUsername(
   viewerId: string,
@@ -34,69 +31,62 @@ export async function blockByUsername(
     throw new SocialError("BLOCKED");
   }
 
-  const [outgoingFollow, incomingFollow, outgoingRequest, incomingRequest] =
-    await Promise.all([
-      findRelationship<RelationshipRow>(
-        "follows",
-        "follower",
-        viewerId,
-        "following",
-        target.$id,
-      ),
-      findRelationship<RelationshipRow>(
-        "follows",
-        "follower",
-        target.$id,
-        "following",
-        viewerId,
-      ),
-      findRelationship("requests", "requester", viewerId, "target", target.$id),
-      findRelationship("requests", "requester", target.$id, "target", viewerId),
-    ]);
-  await runTransaction(async (transactionId) => {
-    const service = getTables();
-    await service.createRow<BlockRow>({
-      databaseId: getDatabaseId(),
-      tableId: "blocks",
-      rowId: ID.unique(),
-      permissions: [],
-      transactionId,
-      data: {
-        blocker: viewerId,
-        blocked: target.$id,
-        created: new Date().toISOString(),
-      },
-    });
+  const [link, outgoingRequest, incomingRequest] = await Promise.all([
+    findLink(viewerId, target.$id),
+    findRelationship<RequestRow>(
+      "requests",
+      "requester",
+      viewerId,
+      "target",
+      target.$id,
+    ),
+    findRelationship<RequestRow>(
+      "requests",
+      "requester",
+      target.$id,
+      "target",
+      viewerId,
+    ),
+  ]);
 
-    const removals: Promise<unknown>[] = [];
-    if (outgoingRequest) {
-      removals.push(
-        service.deleteRow({
+  await runTransaction(
+    async (transactionId) => {
+      const service = getTables();
+      await service.createRow<BlockRow>({
+        databaseId: getDatabaseId(),
+        tableId: "blocks",
+        rowId: ID.unique(),
+        permissions: [],
+        transactionId,
+        data: {
+          blocker: viewerId,
+          blocked: target.$id,
+          created: new Date().toISOString(),
+        },
+      });
+
+      if (outgoingRequest) {
+        await service.deleteRow({
           databaseId: getDatabaseId(),
           tableId: "requests",
           rowId: outgoingRequest.$id,
           transactionId,
-        }),
-      );
-    }
-    if (incomingRequest) {
-      removals.push(
-        service.deleteRow({
+        });
+      }
+      if (incomingRequest) {
+        await service.deleteRow({
           databaseId: getDatabaseId(),
           tableId: "requests",
           rowId: incomingRequest.$id,
           transactionId,
-        }),
-      );
-    }
-    if (outgoingFollow) {
-      removals.push(removeFollowInTransaction(outgoingFollow, transactionId));
-    }
-    if (incomingFollow) {
-      removals.push(removeFollowInTransaction(incomingFollow, transactionId));
-    }
-    await Promise.all(removals);
-  });
+        });
+      }
+      if (link) {
+        await removeLinkInTransaction(link, transactionId);
+      }
+    },
+    "Block transaction",
+  );
 }
 
 export async function unblockByUsername(

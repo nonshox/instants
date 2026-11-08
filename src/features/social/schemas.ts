@@ -9,10 +9,7 @@ const cursor = z
   .optional();
 
 export const profileLookupSchema = z.object({ username }).strict();
-export const connectionListSchema = z.object({
-  kind: z.enum(["followers", "following"]),
-  cursor,
-}).strict();
+export const connectionListSchema = z.object({ cursor }).strict();
 export const requestListSchema = z.object({
   direction: z.enum(["received", "sent"]).default("received"),
   cursor,

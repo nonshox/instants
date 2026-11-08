@@ -14,8 +14,7 @@ type ProfileRow = Models.Row & {
   bio: string;
   avatar: string;
   private: boolean;
-  followers: number;
-  following: number;
+  links: number;
   likes: number;
   email: string;
 };
@@ -86,8 +85,7 @@ export async function createProfileForAccount(
     data: {
       ...input,
       avatar: "",
-      followers: 0,
-      following: 0,
+      links: 0,
       likes: 0,
       email: authEmail,
     },

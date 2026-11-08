@@ -2,6 +2,7 @@ import "server-only";
 import { AppwriteException, ID, Query, type Models } from "node-appwrite";
 import { InputFile } from "node-appwrite/file";
 import { canViewInstant } from "./policy";
+import { findLink } from "@/src/features/social/data";
 import {
   optimizeImage,
   InvalidInstantImageError,
@@ -179,20 +180,20 @@ export async function getAuthorizedInstantImage(
   }
 
   const isOwner = viewerId === instant.user;
-  let isFollowing = false;
+  let isLinked = false;
   let isBlocked = false;
 
   if (viewerId && !isOwner) {
-    const [followForward, blockForward, blockReverse] = await Promise.all([
-      getRelationship("follows", "follower", viewerId, "following", instant.user),
-      getRelationship("blocks", "blocker", viewerId, "blocked", instant.user),
-      getRelationship("blocks", "blocker", instant.user, "blocked", viewerId),
+    const [link, blockForward, blockReverse] = await Promise.all([
+      findLink(viewerId, instant.user),
+      findBlock(viewerId, instant.user),
+      findBlock(instant.user, viewerId),
     ]);
-    isFollowing = Boolean(followForward);
+    isLinked = Boolean(link);
     isBlocked = Boolean(blockForward || blockReverse);
   }
 
-  if (!canViewInstant(owner.private, isOwner, isFollowing, isBlocked)) {
+  if (!canViewInstant(owner.private, isOwner, isLinked, isBlocked)) {
     throw new InstantNotFoundError();
   }
 
@@ -209,19 +210,16 @@ export async function getAuthorizedInstantImage(
   return { bytes, mimeType };
 }
 
-async function getRelationship(
-  tableId: "follows" | "blocks",
-  firstKey: "follower" | "blocker",
-  firstId: string,
-  secondKey: "following" | "blocked",
-  secondId: string,
+async function findBlock(
+  blockerId: string,
+  blockedId: string,
 ): Promise<Models.Row | null> {
   const result = await getTables().listRows<Models.Row>({
     databaseId: getDatabaseId(),
-    tableId,
+    tableId: "blocks",
     queries: [
-      Query.equal(firstKey, firstId),
-      Query.equal(secondKey, secondId),
+      Query.equal("blocker", blockerId),
+      Query.equal("blocked", blockedId),
       Query.limit(1),
     ],
     total: false,

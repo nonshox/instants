@@ -18,7 +18,7 @@ describe("Instant inputs", () => {
 });
 
 describe("Instant visibility", () => {
-  it("requires approved following for private accounts and denies either block direction", () => {
+  it("requires an accepted link for private accounts and denies either block direction", () => {
     expect(canViewInstant(true, false, false, false)).toBe(false);
     expect(canViewInstant(true, false, true, false)).toBe(true);
     expect(canViewInstant(false, false, false, false)).toBe(true);
@@ -48,6 +48,8 @@ describe("Instant image validation", () => {
         ["image/jpeg", "image/png", "image/webp"][index],
       );
       expect(result.buffer.byteLength).toBeGreaterThan(0);
+      const metadata = await sharp(result.buffer).metadata();
+      expect(metadata.width).toBe(metadata.height);
     }
 
     await expect(optimizeImage(Buffer.from("not an image"))).rejects.toBeInstanceOf(

@@ -13,7 +13,7 @@ production-ready.
 ## 1. Product
 
 Build a web-only, minimalist photo-sharing social network for authentic
-everyday photos shared with chosen or approved followers. Priorities:
+everyday photos shared with linked accounts. Priorities:
 privacy, simplicity, meaningful connections, temporary shared content,
 calm visual design. Avoid popularity mechanics, engagement bait,
 endless-scroll patterns, autoplay, slideshows, forced loops, clutter,
@@ -28,9 +28,11 @@ are temporary.
 
 -   Public account: anyone can view profile details and currently living
     Instants.
--   Private account: only approved followers can view profile content
-    and living Instants.
--   Pending follow requests grant no access.
+-   Private account: only linked accounts can view profile content and
+    living Instants.
+-   Every link request requires acceptance; pending requests grant no
+    access.
+-   Links are mutual: one canonical row per pair, no matter who asked.
 -   All authorization is server-side; never trust browser-side
     visibility checks.
 
@@ -44,8 +46,8 @@ are temporary.
     post may remain visible longer than 36 hours until the next run. Do
     not impose an exact 36-hour visibility cutoff unless the owner
     changes this rule.
--   Main feed shows currently living Instants from people the user
-    follows.
+-   Main feed shows currently living Instants from accounts the user is
+    linked with.
 -   The user's own Instants do **not** appear in their main feed.
 -   Newest first; natural manual scrolling; no autoplay, slideshow, or
     forced looping.
@@ -68,28 +70,31 @@ are temporary.
 -   Likes only. No comments/replies in v1.
 -   Prevent duplicate likes per user/Instant; maintain counts
     server-side.
--   Follow/unfollow, private follow requests,
-    approval/rejection/cancellation.
--   Connections is a single paginated view with Followers, Following, and
-    Requests tabs; Requests separates received and sent requests, and its
-    badge counts only incoming requests. Followers support follow-back and
-    removal; Following supports unfollow and block. Search is available at
-    the top of the view.
--   Public user profiles support follow/request, cancel request, unfollow,
-    and block actions. Profile links are available from connection lists
-    and notifications.
+-   Link lifecycle: send request, accept or decline, then both accounts
+    are linked. Either side can unlink; a sender can cancel a pending
+    request. Sending a request to someone who already requested you
+    accepts their request immediately instead of creating a duplicate.
+-   Every link request requires acceptance, regardless of account
+    privacy.
+-   Connections is one simple vertical view: incoming requests appear
+    first with accept/decline, then your links, then sent requests only
+    while they are pending. There are no nested tabs. Links support
+    unlink and block, and search is available at the top of the view.
+-   Public user profiles support link/request, cancel request, accept
+    link, unlink, and block actions. Profile links are available from
+    link lists and notifications.
 -   Privacy settings control public/private account visibility and provide
     a paginated blocked-account list. Unblocking does not recreate removed
-    follows or requests.
--   Blocking removes follow relationships both directions, removes
-    pending requests both directions, prevents profile/content access
-    and interactions, and prevents notifications between the two users.
+    links or requests.
+-   Blocking removes the single mutual link row, removes pending requests
+    both directions, prevents profile/content access and interactions,
+    and prevents notifications between the two users.
 
 ### Notifications and Telegram
 
 -   All relevant notification types must be available in-app and sent
-    through connected Telegram: follow requests, approvals, new
-    followers, likes, etc.
+    through connected Telegram: link requests, link acceptances, likes,
+    etc.
 -   Never send notifications across a block relationship.
 -   `notifications` stores in-app notifications; `tg` stores persistent
     Telegram mapping.
@@ -140,16 +145,16 @@ web app. Disable buttons when required inputs are empty/invalid.
 -   Tables have row security enabled and table-level permissions empty.
     This is intentional for server-mediated access.
 -   Storage has file security enabled. No public permanent image URLs.
--   All ownership, follow, privacy, block, expiry, and authorization
+-   All ownership, link, privacy, block, expiry, and authorization
     checks happen server-side.
 -   Deliver private images through an authorized Next.js server route
     keyed by the canonical file ID in `instants.image`. Recheck
-    ownership, follow, privacy, block, and expiry rules before returning
+    ownership, link, privacy, block, and expiry rules before returning
     image bytes. Never expose a public permanent Storage URL.
 -   Validate all input and IDs; never trust client-provided user IDs or
     ownership claims.
 -   Suggested route capabilities: auth/profile sync; profile
-    lookup/update; follow/request/approve/reject/cancel; feed; Instant
+    lookup/update; link/request/accept/decline/cancel; feed; Instant
     upload/retrieval/manual delete; like/unlike; notifications/read
     state; block/unblock; Telegram link/webhook; session management;
     cron cleanup.
@@ -171,24 +176,31 @@ Profile table; Appwrite Auth user ID is the row ID; no redundant
 `userId` field. - `username`: varchar(30), required, unique. - `name`:
 varchar(50), optional. - `bio`: text, optional. - `avatar`: varchar(36),
 optional, default `""`; Appwrite file ID. - `private`: boolean, default
-`true`. - `followers`: integer, default `0`. - `following`: integer,
-default `0`. - `likes`: integer, default `0`. - `email`: email type,
+`true`. - `links`: integer, default `0`; mutual link count. -
+`followers`/`following`: legacy integer counters retained for
+compatibility and mirrored to `links`; application logic uses `links`.
+- `likes`: integer, default `0`. - `email`: email type,
 required, unique; mirror of Auth email. Indexes: `username_uq`
 unique(`username`); `email_uq` unique(`email`). Counters are cached and
 maintained only by trusted server-side operations.
 
 ### `follows`
 
--   `follower`: varchar(36), required.
--   `following`: varchar(36), required. Indexes: `follower_following_uq`
-    unique(`follower`,`following`); `following_idx` on `following`.
+-   One canonical mutual link per pair.
+-   `follower`: varchar(36), required; the lexicographically smaller user
+    ID.
+-   `following`: varchar(36), required; the lexicographically larger user
+    ID. Indexes: `follower_following_uq` unique(`follower`,`following`);
+    `following_idx` on `following`. Because each pair is stored once,
+    the same row serves both users.
 
 ### `requests`
 
 -   `requester`: varchar(36), required.
 -   `target`: varchar(36), required. Indexes: `request_target_uq`
     unique(`requester`,`target`); `target_idx` on `target`. Pending
-    requests never grant private access.
+    link requests never grant access. Accepting creates the mutual link
+    row and deletes the request; declining deletes only the request.
 
 ### `instants`
 
@@ -213,8 +225,10 @@ maintained only by trusted server-side operations.
 -   `type`: varchar(24), required.
 -   `instant`: varchar(36), optional.
 -   `read`: boolean, default `false`. Index: `recipient_read_idx`
-    composite(`recipient`,`read`). Define a small consistent set of
-    notification type values in application code.
+    composite(`recipient`,`read`). Application types are
+    `link_request`, `link_accepted`, and `like`; legacy
+    `follow_request`, `follow_approved`, and `new_follower` rows remain
+    renderable.
 
 ### `blocks`
 
@@ -251,6 +265,10 @@ expired/used rows safely.
 -   Current verified inventory is exactly: `users`, `follows`,
     `requests`, `instants`, `likes`, `notifications`, `blocks`, `tg`,
     `tg_tokens`.
+-   The social model was rebuilt as mutual links on the existing
+    `follows`/`requests` tables. `follows` stores one canonical row per
+    pair with sorted user IDs; `users.links` is the canonical counter.
+    `followers`/`following` are legacy mirrors.
 -   Do not create a separate profiles table, reports/settings/devices
     tables, or sessions table. Do not rename all fields into cryptic
     abbreviations.
@@ -321,11 +339,11 @@ Appwrite API key only in server environment variables. - No direct
 client TablesDB permissions under this architecture. - Private Storage;
 no public permanent image URLs. - Validate all input, IDs, captions,
 file sizes, actual file content, and allowed operations. - Enforce
-public/private profile rules, approved-follow access, block rules,
+public/private profile rules, linked-account access, block rules,
 ownership, and expiry on server. - Apply block checks to profile views,
-feeds, likes, follow operations, and notifications. - Enforce expiry
+feeds, likes, link operations, and notifications. - Enforce expiry
 before returning feed records or image bytes. - Rate-limit email code
-requests/attempts, follow requests, likes, Telegram linking, and
+requests/attempts, link requests, likes, Telegram linking, and
 abuse-prone routes. - One-time expiring hashed Telegram tokens; protect
 webhook. - CSRF/origin protections appropriate to session/cookie
 design. - Secure HttpOnly SameSite cookies where applicable. - Avoid
@@ -360,7 +378,7 @@ hardcode secrets or commit `.env`.
     and owner approves schema change.
 -   Maintain counters safely on server; support reconciliation if
     needed.
--   Make follow/request/like/block/delete operations idempotent or
+-   Make link/request/like/block/delete operations idempotent or
     race-safe.
 -   Test authorization and lifecycle rules, not only UI happy paths.
 
@@ -372,12 +390,12 @@ Unique username/email constraints. - Session listing, revocation,
 logout.
 
 Privacy/relationships: - Private profile inaccessible to
-non-followers. - Pending request grants no access. - Approval grants
-access. - Unfollow removes private access. - Block removes relationships
+non-linked accounts. - Pending request grants no access. - Acceptance
+grants access. - Unlink removes private access. - Block removes links
 and prevents access/interactions both ways.
 
-Feed/Instants: - Feed only contains living Instants from followed
-users. - Own Instants excluded from own main feed. - Newest-first
+Feed/Instants: - Feed only contains living Instants from linked
+accounts. - Own Instants excluded from own main feed. - Newest-first
 order. - Expiry behavior matches daily cleanup policy. - Caption
 optional, one line, max five words. - Unauthorized users cannot retrieve
 private image bytes.
@@ -418,17 +436,17 @@ deletion retains row for retry. - Batch processing and safe logs.
 -   Native Appwrite session listing, individual revocation, and logout.
 -   Authenticated profile onboarding and editing through the existing
       `users` table, with server-side identity and row ownership.
--   Username lookup and transactional public follows/private follow
-    requests, approval/rejection/cancellation, bidirectional block
-    cleanup, and transactional counter updates.
--   Following feed, privacy- and block-checked image delivery, validated
+-   Username lookup and transactional mutual-link requests,
+    acceptance/decline/cancellation, bidirectional block cleanup, and
+    transactional counter updates.
+-   Links feed, privacy- and block-checked image delivery, validated
     and re-encoded uploads, owner-only IndexedDB archive, and manual
     cloud/local deletion.
 -   Idempotent like/unlike operations, transactional like counters, and
     in-app like notification records.
 -   Paginated in-app notification listing/read state, and notifications
-    for likes, follow requests, approvals, and new followers. Blocked
-    users are filtered from notification views and Telegram delivery.
+    for likes, link requests, and link acceptances. Blocked users are
+    filtered from notification views and Telegram delivery.
 -   Hashed, expiring, one-time Telegram linking tokens; authenticated
     connect/disconnect endpoints; secret-verified private-chat webhook;
     Telegram delivery with bounded transient retries.
@@ -460,7 +478,7 @@ deletion retains row for retry. - Batch processing and safe logs.
 6.  Do not show own Instants in own main feed.
 7.  Automatic expiry must preserve IndexedDB archive.
 8.  Manual deletion must remove both cloud and local copies.
-9.  Pending follow requests never grant private access.
+9.  Pending link requests never grant private access.
 10. Never trust browser-side authorization.
 11. Never expose Appwrite server key or Telegram secrets.
 12. Never make private images publicly accessible.

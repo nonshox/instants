@@ -20,10 +20,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  prepareSquareImage,
+  SquareImageError,
+} from "@/src/features/instants/prepare-image";
 import { useInstantStore } from "@/src/features/instants/store";
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_BYTES = 10_000_000;
+const MAX_EXPORT_EDGE = 1440;
 
 export function InstantComposer() {
   const uploading = useInstantStore((state) => state.uploading);
@@ -36,7 +41,9 @@ export function InstantComposer() {
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraRequestId = useRef(0);
+  const fileRequestId = useRef(0);
   const [file, setFile] = useState<File | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [preview, setPreview] = useState<{ file: File; url: string } | null>(
     null,
   );
@@ -80,15 +87,47 @@ export function InstantComposer() {
     };
   }, [file]);
 
-  const chooseFile = (nextFile: File | null) => {
+  const chooseFile = async (nextFile: File | null) => {
+    const requestId = ++fileRequestId.current;
     setCameraStream(null);
     setCameraError("");
-    setFile(nextFile);
+    setPreparing(false);
     clearUploadMessage();
+
+    if (!nextFile) {
+      setFile(null);
+      return;
+    }
+
+    setFile(nextFile);
+    if (!ACCEPTED_IMAGE_TYPES.includes(nextFile.type)) {
+      return;
+    }
+
+    setPreparing(true);
+    try {
+      const squareFile = await prepareSquareImage(nextFile);
+      if (requestId === fileRequestId.current) {
+        setFile(squareFile);
+      }
+    } catch (cause) {
+      if (requestId === fileRequestId.current) {
+        setFile(null);
+        setCameraError(
+          cause instanceof SquareImageError
+            ? cause.message
+            : "This photo could not be prepared. Choose a different image and try again.",
+        );
+      }
+    } finally {
+      if (requestId === fileRequestId.current) {
+        setPreparing(false);
+      }
+    }
   };
 
   const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    chooseFile(event.target.files?.[0] ?? null);
+    void chooseFile(event.target.files?.[0] ?? null);
   };
 
   const openCamera = async () => {
@@ -203,22 +242,31 @@ export function InstantComposer() {
       return;
     }
 
-    const scale = Math.min(
-      1,
-      1920 / Math.max(video.videoWidth, video.videoHeight),
-    );
+    // Match the square crop shown by the live preview so the shot is 1:1.
+    const side = Math.min(video.videoWidth, video.videoHeight);
+    const outputEdge = Math.min(side, MAX_EXPORT_EDGE);
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.width = outputEdge;
+    canvas.height = outputEdge;
     const context = canvas.getContext("2d");
     if (!context) {
       setCameraError("The photo could not be captured. Please try again.");
       return;
     }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    context.drawImage(
+      video,
+      (video.videoWidth - side) / 2,
+      (video.videoHeight - side) / 2,
+      side,
+      side,
+      0,
+      0,
+      outputEdge,
+      outputEdge,
+    );
 
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.85),
+      canvas.toBlob(resolve, "image/jpeg", 0.88),
     );
     if (!blob || blob.size > MAX_IMAGE_BYTES) {
       setCameraError(
@@ -229,13 +277,15 @@ export function InstantComposer() {
       return;
     }
 
-    chooseFile(new File([blob], `instant-${Date.now()}.jpg`, { type: blob.type }));
+    await chooseFile(
+      new File([blob], `instant-${Date.now()}.jpg`, { type: blob.type }),
+    );
   };
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragging(false);
-    chooseFile(event.dataTransfer.files[0] ?? null);
+    void chooseFile(event.dataTransfer.files[0] ?? null);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -251,7 +301,8 @@ export function InstantComposer() {
   };
 
   const fileIsValid = Boolean(
-    file &&
+    !preparing &&
+      file &&
       file.size > 0 &&
       file.size <= MAX_IMAGE_BYTES &&
       ACCEPTED_IMAGE_TYPES.includes(file.type),
@@ -310,7 +361,7 @@ export function InstantComposer() {
               <>
                 <Image
                   alt="Preview of the selected Instant"
-                  className="object-contain"
+                  className="object-cover"
                   fill
                   sizes="(max-width: 1024px) 100vw, 55vw"
                   src={previewUrl}
@@ -318,9 +369,9 @@ export function InstantComposer() {
                 />
                 <button
                   aria-label="Remove selected photo"
-                  className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background"
+                  className="absolute right-3 top-3 z-10 grid size-9 place-items-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background"
                   onClick={() => {
-                    chooseFile(null);
+                    void chooseFile(null);
                     if (inputRef.current) inputRef.current.value = "";
                   }}
                   type="button"
@@ -398,7 +449,7 @@ export function InstantComposer() {
                 <div>
                   <p className="text-sm font-medium">Add a photo</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Drag and drop an image here
+                    Drag and drop an image here — we&apos;ll crop it to 1:1
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
@@ -422,12 +473,26 @@ export function InstantComposer() {
                 </div>
               </div>
             )}
+            {preparing && (
+              <div
+                aria-live="polite"
+                className="absolute inset-0 z-[1] grid place-items-center bg-background/65"
+              >
+                <span className="inline-flex items-center gap-2 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium shadow-sm">
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="size-4 animate-spin"
+                  />
+                  Cropping to 1:1
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex min-h-8 flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
             <span>
               {file
                 ? `${file.name} · ${formatFileSize(file.size)}`
-                : "JPEG, PNG or WebP"}
+                : "JPEG, PNG or WebP · 1:1 square"}
             </span>
             <span>Up to 10 MB</span>
             {previewUrl && (

@@ -2,7 +2,13 @@ import { apiClient } from "@/src/lib/api-client";
 
 export type NotificationItem = {
   id: string;
-  type: "follow_request" | "follow_approved" | "new_follower" | "like";
+  type:
+    | "link_request"
+    | "link_accepted"
+    | "follow_request"
+    | "follow_approved"
+    | "new_follower"
+    | "like";
   actorUsername: string;
   instantId: string | null;
   createdAt: string;

@@ -14,7 +14,7 @@ export type InstantRow = Models.Row & {
   cap: string;
 };
 
-export type FollowRow = Models.Row & {
+export type LinkRow = Models.Row & {
   follower: string;
   following: string;
 };

@@ -24,9 +24,9 @@ import { getApiErrorMessage } from "@/src/lib/api-client";
 
 const navigationGroups = [
   [
-    { label: "Following", href: "/", icon: Images },
+    { label: "Feed", href: "/", icon: Images },
     { label: "Create an Instant", href: "/create", icon: ImagePlus },
-    { label: "Connections", href: "/connections", icon: UsersRound },
+    { label: "Links", href: "/connections", icon: UsersRound },
     { label: "Notifications", href: "/notifications", icon: Bell },
   ],
   [

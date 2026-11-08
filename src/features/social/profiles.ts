@@ -2,6 +2,7 @@ import "server-only";
 import { Query, type Models } from "node-appwrite";
 import { canViewProfileDetails } from "@/src/features/social/policy";
 import {
+  findLink,
   findRelationship,
   findUserByUsername,
   getDatabaseId,
@@ -9,8 +10,8 @@ import {
 } from "./data";
 import {
   SocialError,
+  type LinkRow,
   type PublicProfile,
-  type RelationshipRow,
   type RequestRow,
   type UserRow,
 } from "./types";
@@ -42,22 +43,16 @@ export async function getProfileForViewer(
     return toPublicProfile(target, "blocked", false);
   }
 
-  const [follow, outgoingRequest, incomingRequest] = await Promise.all([
-    findRelationship<RelationshipRow>(
-      "follows",
-      "follower",
-      viewerId,
-      "following",
-      target.$id,
-    ),
+  const [link, outgoingRequest, incomingRequest] = await Promise.all([
+    findLink(viewerId, target.$id),
     findRelationship("requests", "requester", viewerId, "target", target.$id),
     findRelationship("requests", "requester", target.$id, "target", viewerId),
   ]);
 
-  if (follow) {
+  if (link) {
     return toPublicProfile(
       target,
-      "following",
+      "linked",
       canViewProfileDetails(target.private, false, true),
     );
   }
@@ -77,7 +72,7 @@ export async function getProfileForViewer(
   }
   return toPublicProfile(
     target,
-    "not_following",
+    "not_linked",
     canViewProfileDetails(target.private, false, false),
   );
 }
@@ -93,8 +88,7 @@ function toPublicProfile(
     bio: showDetails ? row.bio : "",
     avatar: showDetails ? row.avatar : "",
     private: row.private,
-    followers: showDetails ? row.followers : null,
-    following: showDetails ? row.following : null,
+    links: showDetails ? (row.links ?? 0) : null,
     relationship,
   };
 }
@@ -115,56 +109,47 @@ export async function listOutgoingRequests(
 
 export async function listConnections(
   userId: string,
-  kind: "followers" | "following",
   cursor: string | null = null,
 ): Promise<ConnectionPage> {
-  const firstKey = kind === "followers" ? "following" : "follower";
-  const result = await getTables().listRows<RelationshipRow>({
+  const result = await getTables().listRows<LinkRow>({
     databaseId: getDatabaseId(),
     tableId: "follows",
     queries: [
-      Query.equal(firstKey, userId),
+      Query.or([
+        Query.equal("follower", userId),
+        Query.equal("following", userId),
+      ]),
       Query.orderDesc("$createdAt"),
       Query.limit(26),
       ...(cursor ? [Query.cursorAfter(cursor)] : []),
-      Query.select(["$id", "follower", "following"]),
+      Query.select(["$id", "$createdAt", "follower", "following"]),
     ],
     total: false,
   });
   const pageRows = result.rows.slice(0, 25);
-  const targetIds = pageRows.map((row) =>
-    kind === "followers" ? row.follower : row.following,
-  );
-  const [users, blockedIds, existingFollows, requests] = await Promise.all([
-    getUsers(targetIds),
+  const otherIds = [
+    ...new Set(
+      pageRows.map((row) =>
+        row.follower === userId ? row.following : row.follower,
+      ),
+    ),
+  ];
+  const [users, blockedIds] = await Promise.all([
+    getUsers(otherIds),
     getBlockedIds(userId),
-    kind === "followers" ? getRelationships("follower", userId, targetIds) : [],
-    kind === "followers" ? getRequests("requester", userId, targetIds) : [],
   ]);
-  const followsSet = new Set(existingFollows.map((row) => row.following));
-  const requestsSet = new Set(requests.map((row) => row.target));
 
   return {
     items: pageRows.flatMap((row) => {
-      const id = kind === "followers" ? row.follower : row.following;
+      const id = row.follower === userId ? row.following : row.follower;
       const user = users.get(id);
       if (!user || blockedIds.has(id)) return [];
-      return [{
-        username: user.username,
-        name: user.name,
-        private: user.private,
-        relationship: kind === "following"
-          ? "following" as const
-          : followsSet.has(id)
-            ? "following" as const
-            : requestsSet.has(id)
-              ? "requested" as const
-              : "not_following" as const,
-      }];
+      return [{ username: user.username, name: user.name, private: user.private }];
     }),
-    nextCursor: result.rows.length > 25
-      ? pageRows[pageRows.length - 1]?.$id ?? null
-      : null,
+    nextCursor:
+      result.rows.length > 25
+        ? (pageRows[pageRows.length - 1]?.$id ?? null)
+        : null,
   };
 }
 
@@ -180,7 +165,7 @@ export async function listBlockedAccounts(
       Query.orderDesc("$createdAt"),
       Query.limit(26),
       ...(cursor ? [Query.cursorAfter(cursor)] : []),
-      Query.select(["$id", "blocked"]),
+      Query.select(["$id", "$createdAt", "blocked"]),
     ],
     total: false,
   });
@@ -191,9 +176,10 @@ export async function listBlockedAccounts(
       const user = users.get(row.blocked);
       return user ? [{ username: user.username, name: user.name }] : [];
     }),
-    nextCursor: result.rows.length > 25
-      ? pageRows[pageRows.length - 1]?.$id ?? null
-      : null,
+    nextCursor:
+      result.rows.length > 25
+        ? (pageRows[pageRows.length - 1]?.$id ?? null)
+        : null,
   };
 }
 
@@ -201,7 +187,6 @@ type ConnectionItem = {
   username: string;
   name?: string;
   private?: boolean;
-  relationship?: "following" | "requested" | "not_following";
 };
 
 type ConnectionPage = {
@@ -223,7 +208,7 @@ async function listRequestRows(
       Query.orderDesc("$createdAt"),
       Query.limit(26),
       ...(cursor ? [Query.cursorAfter(cursor)] : []),
-      Query.select(["$id", "requester", "target"]),
+      Query.select(["$id", "$createdAt", "requester", "target"]),
     ],
     total: key === "target",
   });
@@ -243,9 +228,10 @@ async function listRequestRows(
         ? [{ username: user.username, name: user.name }]
         : [];
     }),
-    nextCursor: result.rows.length > 25
-      ? pageRows[pageRows.length - 1]?.$id ?? null
-      : null,
+    nextCursor:
+      result.rows.length > 25
+        ? (pageRows[pageRows.length - 1]?.$id ?? null)
+        : null,
     ...(key === "target" ? { count: result.total } : {}),
   };
 }
@@ -258,7 +244,7 @@ async function getUsers(userIds: string[]): Promise<Map<string, UserRow>> {
     queries: [
       Query.equal("$id", userIds),
       Query.limit(100),
-      Query.select(["$id", "username", "name", "private"]),
+      Query.select(["$id", "username", "name", "private", "links"]),
     ],
     total: false,
   });
@@ -293,9 +279,11 @@ async function listBlockRows(
       ],
       total: false,
     });
-    ids.push(...result.rows.map((row) =>
-      key === "blocker" ? row.blocked : row.blocker,
-    ));
+    ids.push(
+      ...result.rows.map((row) =>
+        key === "blocker" ? row.blocked : row.blocker,
+      ),
+    );
     if (result.rows.length < 100) return ids;
     const nextCursor = result.rows[result.rows.length - 1].$id;
     if (nextCursor === cursor) {
@@ -303,44 +291,4 @@ async function listBlockRows(
     }
     cursor = nextCursor;
   }
-}
-
-async function getRelationships(
-  key: "follower",
-  userId: string,
-  targetIds: string[],
-): Promise<RelationshipRow[]> {
-  if (targetIds.length === 0) return [];
-  const result = await getTables().listRows<RelationshipRow>({
-    databaseId: getDatabaseId(),
-    tableId: "follows",
-    queries: [
-      Query.equal(key, userId),
-      Query.equal("following", targetIds),
-      Query.limit(100),
-      Query.select(["$id", "follower", "following"]),
-    ],
-    total: false,
-  });
-  return result.rows;
-}
-
-async function getRequests(
-  key: "requester",
-  userId: string,
-  targetIds: string[],
-): Promise<RequestRow[]> {
-  if (targetIds.length === 0) return [];
-  const result = await getTables().listRows<RequestRow>({
-    databaseId: getDatabaseId(),
-    tableId: "requests",
-    queries: [
-      Query.equal(key, userId),
-      Query.equal("target", targetIds),
-      Query.limit(100),
-      Query.select(["$id", "requester", "target"]),
-    ],
-    total: false,
-  });
-  return result.rows;
 }

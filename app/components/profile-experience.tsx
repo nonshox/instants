@@ -207,7 +207,7 @@ export function ProfileExperience({ accountId }: { accountId: string }) {
               <span className="grid gap-1">
                 <strong className="text-sm font-medium">Private account</strong>
                 <small className="text-[11px] leading-5 text-muted-foreground">
-                  Only approved followers can see your Instants.
+                  Only linked accounts can see your Instants.
                 </small>
               </span>
             </label>

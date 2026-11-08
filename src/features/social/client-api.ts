@@ -2,28 +2,26 @@ import { apiClient } from "@/src/lib/api-client";
 
 export type Relationship =
   | "self"
-  | "following"
+  | "linked"
   | "requested"
   | "incoming"
-  | "not_following"
+  | "not_linked"
   | "blocked";
 
 export type SocialProfile = {
   username: string;
   name: string;
   bio: string;
+  avatar: string;
   private: boolean;
-  followers: number | null;
-  following: number | null;
+  links: number | null;
   relationship: Relationship;
 };
 
-export type FollowRequest = { username: string };
 export type ConnectionItem = {
   username: string;
   name?: string;
   private?: boolean;
-  relationship?: "following" | "requested" | "not_following";
 };
 export type ConnectionPage = {
   items: ConnectionItem[];
@@ -31,18 +29,18 @@ export type ConnectionPage = {
   count?: number;
 };
 
-export async function fetchConnections(
-  kind: "followers" | "following",
+export type LinkStatus = "linked" | "requested";
+
+export async function fetchLinks(
   cursor: string | null = null,
 ): Promise<ConnectionPage> {
-  const { data } = await apiClient.get<ConnectionPage>(
-    "/social/relationships",
-    { params: { kind, ...(cursor ? { cursor } : {}) } },
-  );
+  const { data } = await apiClient.get<ConnectionPage>("/social/relationships", {
+    params: cursor ? { cursor } : undefined,
+  });
   return data;
 }
 
-export async function fetchFollowRequests(
+export async function fetchLinkRequests(
   direction: "received" | "sent" = "received",
   cursor: string | null = null,
 ): Promise<ConnectionPage> {
@@ -71,25 +69,19 @@ export async function searchSocialProfile(
   return data.profile;
 }
 
-export async function updateRelationship(
-  username: string,
-  remove: boolean,
-  direction?: "follower",
-): Promise<Relationship | null> {
-  if (remove) {
-    await apiClient.delete("/social/relationships", {
-      params: { username, ...(direction ? { direction } : {}) },
-    });
-    return null;
-  }
-  const { data } = await apiClient.post<{ relationship: Relationship }>(
+export async function requestLink(username: string): Promise<LinkStatus> {
+  const { data } = await apiClient.post<{ relationship: LinkStatus }>(
     "/social/relationships",
     { username },
   );
   return data.relationship;
 }
 
-export async function decideFollowRequest(
+export async function removeLink(username: string): Promise<void> {
+  await apiClient.delete("/social/relationships", { params: { username } });
+}
+
+export async function decideLinkRequest(
   username: string,
   action: "approve" | "reject",
 ): Promise<void> {
@@ -106,10 +98,4 @@ export async function updateBlock(
   }
   await apiClient.post("/social/blocks", { username });
   return null;
-}
-
-export async function removeIncomingFollower(username: string): Promise<void> {
-  await apiClient.delete("/social/relationships", {
-    params: { username, direction: "follower" },
-  });
 }

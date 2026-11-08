@@ -16,6 +16,8 @@ import type { NotificationItem } from "@/src/features/notifications/client-api";
 import { useNotificationStore } from "@/src/features/notifications/store";
 
 const descriptions: Record<NotificationItem["type"], string> = {
+  link_request: "sent you a link request",
+  link_accepted: "accepted your link request",
   follow_request: "requested to follow you",
   follow_approved: "approved your follow request",
   new_follower: "started following you",
@@ -66,7 +68,7 @@ export function NotificationExperience() {
           <p className="py-5 text-xs text-muted-foreground">Loading notifications...</p>
         ) : items.length === 0 ? (
           <p className="py-5 text-xs text-muted-foreground">
-            Follow requests, new followers, and likes will appear here.
+            Link requests and likes will appear here.
           </p>
         ) : (
           <ul className="m-0 list-none p-0">

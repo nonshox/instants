@@ -109,7 +109,7 @@ export function PrivacySettings() {
     }));
     try {
       await updateBlock(username, true);
-      setMessage(`@${username} unblocked. Existing follows were not restored.`);
+      setMessage(`@${username} unblocked. Existing links were not restored.`);
     } catch (cause) {
       setError(getApiErrorMessage(cause, "The account could not be unblocked."));
       await loadBlocked();
@@ -125,7 +125,7 @@ export function PrivacySettings() {
         <div>
           <h2 className="text-lg font-semibold" id="privacy-title">Privacy</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Manage who can follow you and accounts you have blocked.
+            Manage who you link with and accounts you have blocked.
           </p>
         </div>
       </header>
@@ -136,8 +136,8 @@ export function PrivacySettings() {
             <p className="text-sm font-medium">Private account</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {profile?.private
-                ? "New followers need your approval to see your Instants."
-                : "Anyone can follow you and see your public Instants."}
+                ? "Link requests need your acceptance before your Instants are shared."
+                : "Anyone can send a link request, and you choose whether to accept."}
             </p>
           </div>
           {loadingProfile ? (
@@ -167,7 +167,7 @@ export function PrivacySettings() {
             <div>
               <p className="text-sm font-medium">Blocked accounts</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Unblocking never restores follows or requests.
+                Unblocking never restores links or requests.
               </p>
             </div>
             {!blocked.loaded && !loadingBlocked && (

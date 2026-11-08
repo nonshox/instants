@@ -6,9 +6,10 @@ import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
 import {
+  removeLink,
+  requestLink,
   searchSocialProfile,
   updateBlock,
-  updateRelationship,
   type SocialProfile,
 } from "@/src/features/social/client-api";
 import { getApiErrorMessage } from "@/src/lib/api-client";
@@ -40,28 +41,31 @@ export function PublicProfileExperience({ username }: { username: string }) {
   const changeRelationship = async () => {
     if (!profile) return;
     const previous = profile;
-    const remove = profile.relationship === "following" ||
-      profile.relationship === "requested";
+    const remove =
+      profile.relationship === "linked" || profile.relationship === "requested";
+    const wasLinked = profile.relationship === "linked";
     setPending(true);
     setError("");
     setMessage("");
-    if (!remove) {
-      setProfile({
-        ...profile,
-        relationship: profile.private ? "requested" : "following",
-      });
+    if (remove) {
+      setProfile({ ...profile, relationship: "not_linked" });
+    } else if (profile.relationship === "incoming") {
+      setProfile({ ...profile, relationship: "linked" });
     } else {
-      setProfile({ ...profile, relationship: "not_following" });
+      setProfile({ ...profile, relationship: "requested" });
     }
     try {
-      const relationship = await updateRelationship(profile.username, remove);
-      if (!remove && relationship) {
-        setProfile((current) => current ? { ...current, relationship } : current);
+      if (remove) {
+        await removeLink(profile.username);
+        setMessage(wasLinked ? "Link removed." : "Link request cancelled.");
+        return;
       }
-      setMessage(remove ? "Connection updated." : profile.private ? "Follow request sent." : "Following.");
+      const status = await requestLink(profile.username);
+      setProfile((current) => current ? { ...current, relationship: status } : current);
+      setMessage(status === "linked" ? "Linked." : "Link request sent.");
     } catch (cause) {
       setProfile(previous);
-      setError(getApiErrorMessage(cause, "The relationship could not be updated."));
+      setError(getApiErrorMessage(cause, "The link could not be updated."));
     } finally {
       setPending(false);
     }
@@ -70,7 +74,7 @@ export function PublicProfileExperience({ username }: { username: string }) {
   const toggleBlock = async () => {
     if (!profile) return;
     const blocked = profile.relationship === "blocked";
-    if (!blocked && !window.confirm(`Block @${profile.username}? This removes existing connections.`)) {
+    if (!blocked && !window.confirm(`Block @${profile.username}? This also removes your link.`)) {
       return;
     }
     setPending(true);
@@ -80,7 +84,7 @@ export function PublicProfileExperience({ username }: { username: string }) {
         const updated = await updateBlock(profile.username, true);
         if (!updated) throw new Error("Profile could not be refreshed.");
         setProfile(updated);
-        setMessage("Account unblocked. Existing follows were not restored.");
+        setMessage("Account unblocked. Your link was not restored.");
       } else {
         await updateBlock(profile.username, false);
         setProfile({ ...profile, relationship: "blocked", name: "", bio: "" });
@@ -115,11 +119,8 @@ export function PublicProfileExperience({ username }: { username: string }) {
           {profile.name && <p className="text-sm text-muted-foreground">@{profile.username}</p>}
           {profile.bio && <p className="mt-2 text-sm leading-relaxed">{profile.bio}</p>}
           <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted-foreground">
-            {profile.followers !== null && (
-              <span><strong className="text-foreground">{profile.followers}</strong> followers</span>
-            )}
-            {profile.following !== null && (
-              <span><strong className="text-foreground">{profile.following}</strong> following</span>
+            {profile.links !== null && (
+              <span><strong className="text-foreground">{profile.links}</strong> {profile.links === 1 ? "link" : "links"}</span>
             )}
             {profile.private && <span className="inline-flex items-center gap-1"><Shield className="size-3.5" /> Private</span>}
           </div>
@@ -161,18 +162,28 @@ export function PublicProfileExperience({ username }: { username: string }) {
           {isBlocked ? (
             <p className="text-sm text-muted-foreground">You blocked this account.</p>
           ) : profile.relationship === "incoming" ? (
-            <Button nativeButton={false} render={<Link href="/connections?tab=requests" />} variant="outline">
-              Review follow request
+            <Button disabled={pending} onClick={() => void changeRelationship()} type="button">
+              {pending ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : "Accept link"}
             </Button>
           ) : (
-            <Button disabled={pending} onClick={() => void changeRelationship()} type="button">
+            <Button
+              disabled={pending}
+              onClick={() => void changeRelationship()}
+              type="button"
+              variant={profile.relationship === "linked" ? "outline" : "default"}
+            >
               {pending ? <LoaderCircle aria-hidden="true" className="animate-spin" /> :
-                profile.relationship === "following" ? "Following" :
-                  profile.relationship === "requested" ? "Requested" :
-                    profile.private ? "Request to follow" : "Follow"}
+                profile.relationship === "linked" ? "Unlink" :
+                  profile.relationship === "requested" ? "Cancel request" :
+                    "Link"}
             </Button>
           )}
         </div>
+      )}
+      {profile.relationship === "incoming" && !isBlocked && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          This person sent you a link request. Accepting links you both.
+        </p>
       )}
       {error && <p className="mt-4 text-sm text-destructive" role="alert">{error}</p>}
       {message && (

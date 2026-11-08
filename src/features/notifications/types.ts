@@ -1,6 +1,8 @@
 import type { Models } from "node-appwrite";
 
 export const notificationTypes = [
+  "link_request",
+  "link_accepted",
   "follow_request",
   "follow_approved",
   "new_follower",

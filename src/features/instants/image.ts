@@ -1,5 +1,7 @@
 import sharp from "sharp";
 
+const SQUARE_EDGE = 1080;
+
 export type OptimizedImage = {
   buffer: Buffer;
   extension: "jpg" | "png" | "webp";
@@ -20,22 +22,31 @@ export async function optimizeImage(input: Buffer): Promise<OptimizedImage> {
   }
 
   try {
+    const normalize = () =>
+      image
+        .rotate()
+        .resize(SQUARE_EDGE, SQUARE_EDGE, {
+          fit: "cover",
+          position: "centre",
+          withoutEnlargement: true,
+        });
+
     switch (format) {
       case "jpeg":
         return {
-          buffer: await image.rotate().jpeg({ quality: 90 }).toBuffer(),
+          buffer: await normalize().jpeg({ quality: 90 }).toBuffer(),
           extension: "jpg",
           mimeType: "image/jpeg",
         };
       case "png":
         return {
-          buffer: await image.rotate().png().toBuffer(),
+          buffer: await normalize().png().toBuffer(),
           extension: "png",
           mimeType: "image/png",
         };
       case "webp":
         return {
-          buffer: await image.rotate().webp({ quality: 90 }).toBuffer(),
+          buffer: await normalize().webp({ quality: 90 }).toBuffer(),
           extension: "webp",
           mimeType: "image/webp",
         };

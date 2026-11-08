@@ -4,7 +4,7 @@ import {
   getDatabaseId,
   getTables,
   type BlockRow,
-  type FollowRow,
+  type LinkRow,
   type InstantRow,
   type UserPrivacyRow,
 } from "./data";
@@ -33,11 +33,11 @@ export async function getFeedPage(
   viewerId: string,
   cursor: string | null,
 ): Promise<FeedPage> {
-  const [following, blocked] = await Promise.all([
-    listFollowingIds(viewerId),
+  const [linked, blocked] = await Promise.all([
+    listLinkedIds(viewerId),
     listBlockedIds(viewerId),
   ]);
-  if (following.size === 0) {
+  if (linked.size === 0) {
     return { items: [], nextCursor: null, hasMore: false };
   }
 
@@ -70,7 +70,7 @@ export async function getFeedPage(
     queryCursor = lastScanned;
 
     const visibleRows = rows.filter(
-      (row) => following.has(row.user) && !blocked.has(row.user),
+      (row) => linked.has(row.user) && !blocked.has(row.user),
     );
     if (visibleRows.length > 0) {
       const profiles = await getProfiles(
@@ -141,18 +141,24 @@ async function addViewerLikes(
   }));
 }
 
-async function listFollowingIds(viewerId: string): Promise<Set<string>> {
-  const rows = await listAllRows<FollowRow>(
-    "follows",
-    Query.equal("follower", viewerId),
+async function listLinkedIds(viewerId: string): Promise<Set<string>> {
+  const rows = await listAllRows<LinkRow>("follows", [
+    Query.or([
+      Query.equal("follower", viewerId),
+      Query.equal("following", viewerId),
+    ]),
+  ]);
+  return new Set(
+    rows.map((row) =>
+      row.follower === viewerId ? row.following : row.follower,
+    ),
   );
-  return new Set(rows.map((row) => row.following));
 }
 
 async function listBlockedIds(viewerId: string): Promise<Set<string>> {
   const [blockedByViewer, blockedViewer] = await Promise.all([
-    listAllRows<BlockRow>("blocks", Query.equal("blocker", viewerId)),
-    listAllRows<BlockRow>("blocks", Query.equal("blocked", viewerId)),
+    listAllRows<BlockRow>("blocks", [Query.equal("blocker", viewerId)]),
+    listAllRows<BlockRow>("blocks", [Query.equal("blocked", viewerId)]),
   ]);
   return new Set([
     ...blockedByViewer.map((row) => row.blocked),
@@ -162,7 +168,7 @@ async function listBlockedIds(viewerId: string): Promise<Set<string>> {
 
 async function listAllRows<Row extends Models.Row>(
   tableId: "follows" | "blocks",
-  filter: string,
+  filters: string[],
 ): Promise<Row[]> {
   const rows: Row[] = [];
   let cursor: string | null = null;
@@ -172,7 +178,7 @@ async function listAllRows<Row extends Models.Row>(
       databaseId: getDatabaseId(),
       tableId,
       queries: [
-        filter,
+        ...filters,
         Query.limit(querySize),
         ...(cursor ? [Query.cursorAfter(cursor)] : []),
       ],

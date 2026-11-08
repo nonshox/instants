@@ -3,108 +3,102 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ConnectionsSearch } from "@/app/components/connections-search";
 import {
-  SocialListPanel,
-  type SocialListKind,
+  SocialListSection,
+  type SocialSectionKind,
 } from "@/app/components/social-list-panel";
 import {
-  decideFollowRequest,
-  fetchConnections,
-  fetchFollowRequests,
+  decideLinkRequest,
+  fetchLinks,
+  fetchLinkRequests,
+  removeLink,
+  requestLink,
   searchSocialProfile,
   updateBlock,
-  updateRelationship,
-  removeIncomingFollower,
+  type ConnectionItem,
   type ConnectionPage,
   type SocialProfile,
 } from "@/src/features/social/client-api";
 import { getApiErrorMessage } from "@/src/lib/api-client";
 
-type MainTab = "followers" | "following" | "requests";
 type ListState = ConnectionPage & { loaded: boolean };
 const emptyList: ListState = { items: [], nextCursor: null, loaded: false };
+const emptyLoading: Record<SocialSectionKind, boolean> = {
+  links: false,
+  received: false,
+  sent: false,
+};
 
-export function SocialExperience({
-  initialTab = "followers",
-}: {
-  initialTab?: MainTab;
-}) {
+export function SocialExperience() {
   const [username, setUsername] = useState("");
   const [profile, setProfile] = useState<SocialProfile | null>(null);
-  const [mainTab, setMainTab] = useState<MainTab>(initialTab);
-  const [requestTab, setRequestTab] = useState<"received" | "sent">("received");
-  const [lists, setLists] = useState<Record<SocialListKind, ListState>>({
-    followers: { ...emptyList },
-    following: { ...emptyList },
+  const [lists, setLists] = useState<Record<SocialSectionKind, ListState>>({
+    links: { ...emptyList },
     received: { ...emptyList },
     sent: { ...emptyList },
   });
-  const [loadingKey, setLoadingKey] = useState<SocialListKind | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadingMore, setLoadingMore] =
+    useState<Record<SocialSectionKind, boolean>>(emptyLoading);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
 
-  const activeKey: SocialListKind =
-    mainTab === "requests" ? requestTab : mainTab;
-  const activeList = lists[activeKey];
-
-  const loadList = useCallback(async (
-    key: SocialListKind,
-    cursor: string | null = null,
-    append = false,
-  ) => {
-    if (append) setLoadingMore(true);
-    else setLoadingKey(key);
-    setError("");
-    try {
-      const page = key === "followers" || key === "following"
-        ? await fetchConnections(key, cursor)
-        : await fetchFollowRequests(key, cursor);
-      setLists((current) => ({
-        ...current,
-        [key]: {
-          items: append
-            ? [...current[key].items, ...page.items]
-            : page.items,
-          nextCursor: page.nextCursor,
-          count: page.count,
-          loaded: true,
-        },
-      }));
-    } catch (cause) {
-      setError(getApiErrorMessage(cause, "This list could not be loaded."));
-    } finally {
-      if (append) setLoadingMore(false);
-      else setLoadingKey(null);
-    }
+  const fetchAll = useCallback(async () => {
+    const [links, received, sent] = await Promise.all([
+      fetchLinks(),
+      fetchLinkRequests("received"),
+      fetchLinkRequests("sent"),
+    ]);
+    return { links, received, sent };
   }, []);
 
+  const applyPages = useCallback(
+    (pages: {
+      links: ConnectionPage;
+      received: ConnectionPage;
+      sent: ConnectionPage;
+    }) => {
+      setLists({
+        links: { ...pages.links, loaded: true },
+        received: { ...pages.received, loaded: true },
+        sent: { ...pages.sent, loaded: true },
+      });
+    },
+    [],
+  );
+
+  const loadAll = useCallback(async () => {
+    setInitialLoading(true);
+    setError("");
+    try {
+      applyPages(await fetchAll());
+    } catch (cause) {
+      setError(getApiErrorMessage(cause, "Your links could not be loaded."));
+    } finally {
+      setInitialLoading(false);
+    }
+  }, [applyPages, fetchAll]);
+
   useEffect(() => {
-    if (activeList.loaded) return;
     let active = true;
     void (async () => {
       try {
-        const page = activeKey === "followers" || activeKey === "following"
-          ? await fetchConnections(activeKey)
-          : await fetchFollowRequests(activeKey);
-        if (active) {
-          setLists((current) => ({
-            ...current,
-            [activeKey]: { ...page, loaded: true },
-          }));
-        }
+        const pages = await fetchAll();
+        if (active) applyPages(pages);
       } catch (cause) {
         if (active) {
-          setError(getApiErrorMessage(cause, "This list could not be loaded."));
+          setError(getApiErrorMessage(cause, "Your links could not be loaded."));
         }
+      } finally {
+        if (active) setInitialLoading(false);
       }
     })();
     return () => {
       active = false;
     };
-  }, [activeKey, activeList.loaded, loadList]);
+  }, [applyPages, fetchAll]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -125,8 +119,34 @@ export function SocialExperience({
     }
   };
 
+  const loadMore = async (key: SocialSectionKind) => {
+    const list = lists[key];
+    if (!list.nextCursor || loadingMore[key]) return;
+    setLoadingMore((current) => ({ ...current, [key]: true }));
+    setError("");
+    try {
+      const page = key === "links"
+        ? await fetchLinks(list.nextCursor)
+        : await fetchLinkRequests(key, list.nextCursor);
+      setLists((current) => ({
+        ...current,
+        [key]: {
+          ...current[key],
+          items: [...current[key].items, ...page.items],
+          nextCursor: page.nextCursor,
+          count: page.count,
+          loaded: true,
+        },
+      }));
+    } catch (cause) {
+      setError(getApiErrorMessage(cause, "More accounts could not be loaded."));
+    } finally {
+      setLoadingMore((current) => ({ ...current, [key]: false }));
+    }
+  };
+
   const removeOptimistically = async (
-    key: SocialListKind,
+    key: SocialSectionKind,
     target: string,
     action: () => Promise<void>,
     successMessage: string,
@@ -147,57 +167,127 @@ export function SocialExperience({
     try {
       await action();
       showToast(successMessage);
+      return true;
     } catch (cause) {
       setLists((current) => ({ ...current, [key]: previous }));
-      setError(getApiErrorMessage(cause, "The connection could not be updated."));
+      setError(getApiErrorMessage(cause, "The link could not be updated."));
+      return false;
     } finally {
       setPending("");
     }
   };
 
-  const followBack = async (target: string) => {
-    const previous = lists.followers;
-    setPending(target);
+  const addLinkToList = (item: ConnectionItem) => {
+    setLists((current) => {
+      const wasReceived = current.received.items.some(
+        (entry) => entry.username === item.username,
+      );
+      return {
+        ...current,
+        received: {
+          ...current.received,
+          items: current.received.items.filter(
+            (entry) => entry.username !== item.username,
+          ),
+          count: current.received.count === undefined
+            ? undefined
+            : Math.max(0, current.received.count - (wasReceived ? 1 : 0)),
+        },
+        sent: {
+          ...current.sent,
+          items: current.sent.items.filter(
+            (entry) => entry.username !== item.username,
+          ),
+        },
+        links: current.links.loaded
+          ? {
+              ...current.links,
+              items: [
+                item,
+                ...current.links.items.filter(
+                  (entry) => entry.username !== item.username,
+                ),
+              ],
+            }
+          : current.links,
+      };
+    });
+  };
+
+  const changeSearchRelationship = async () => {
+    if (!profile) return;
+    const target = profile;
+    const remove =
+      target.relationship === "linked" || target.relationship === "requested";
+    setPending(target.username);
     setError("");
-    setLists((current) => ({
-      ...current,
-      followers: {
-        ...current.followers,
-        items: current.followers.items.map((item) =>
-          item.username === target
-            ? {
-                ...item,
-                relationship: item.private ? "requested" : "following",
-              }
-            : item,
-        ),
-      },
-    }));
     try {
-      await updateRelationship(target, false);
-      showToast("Connection updated.");
+      if (remove) {
+        const wasLinked = target.relationship === "linked";
+        await removeLink(target.username);
+        setProfile((current) =>
+          current ? { ...current, relationship: "not_linked" } : current,
+        );
+        setLists((current) => ({
+          ...current,
+          links: {
+            ...current.links,
+            items: current.links.items.filter(
+              (item) => item.username !== target.username,
+            ),
+          },
+          sent: {
+            ...current.sent,
+            items: current.sent.items.filter(
+              (item) => item.username !== target.username,
+            ),
+          },
+        }));
+        showToast(wasLinked ? "Link removed." : "Link request cancelled.");
+      } else {
+        const status = await requestLink(target.username);
+        setProfile((current) =>
+          current ? { ...current, relationship: status } : current,
+        );
+        if (status === "linked") {
+          addLinkToList({
+            username: target.username,
+            name: target.name,
+            private: target.private,
+          });
+          showToast("Linked.");
+        } else {
+          showToast("Link request sent.");
+        }
+      }
     } catch (cause) {
-      setLists((current) => ({ ...current, followers: previous }));
-      setError(getApiErrorMessage(cause, "Follow could not be completed."));
+      setError(
+        getApiErrorMessage(cause, "The link could not be updated."),
+      );
     } finally {
       setPending("");
     }
   };
 
   const blockUser = async (target: string) => {
-    if (!window.confirm(`Block @${target}? This also removes existing connections.`)) {
+    if (!window.confirm(`Block @${target}? This also removes your link.`)) {
       return;
     }
     const previous = lists;
     setPending(target);
     setError("");
-    const removeTarget = (list: ListState): ListState => ({
-      ...list,
-      items: list.items.filter((item) => item.username !== target),
-    });
+    const removeTarget = (list: ListState): ListState => {
+      const removed = list.items.some((item) => item.username === target);
+      return {
+        ...list,
+        items: list.items.filter((item) => item.username !== target),
+        count: list.count === undefined
+          ? undefined
+          : Math.max(0, list.count - (removed ? 1 : 0)),
+      };
+    };
     setLists((current) => ({
-      followers: removeTarget(current.followers),
-      following: removeTarget(current.following),
+      links: removeTarget(current.links),
       received: removeTarget(current.received),
       sent: removeTarget(current.sent),
     }));
@@ -225,7 +315,7 @@ export function SocialExperience({
       try {
         await updateBlock(target, true);
         setProfile(await searchSocialProfile(target));
-        showToast(`@${target} unblocked. Existing follows were not restored.`);
+        showToast(`@${target} unblocked. Your link was not restored.`);
       } catch (cause) {
         setError(getApiErrorMessage(cause, "The account could not be unblocked."));
       } finally {
@@ -239,52 +329,93 @@ export function SocialExperience({
   const decideRequest = async (
     target: string,
     action: "approve" | "reject",
-  ) => removeOptimistically(
-    "received",
-    target,
-    () => decideFollowRequest(target, action),
-    action === "approve" ? "Request accepted." : "Request rejected.",
-  );
+  ) => {
+    const accepted = lists.received.items.find(
+      (item) => item.username === target,
+    ) ?? { username: target };
+
+    if (action === "reject") {
+      await removeOptimistically(
+        "received",
+        target,
+        () => decideLinkRequest(target, "reject"),
+        "Link request declined.",
+      );
+      return;
+    }
+
+    const previousReceived = lists.received;
+    const previousLinks = lists.links;
+    setPending(target);
+    setError("");
+    setLists((current) => ({
+      ...current,
+      received: {
+        ...current.received,
+        items: current.received.items.filter(
+          (item) => item.username !== target,
+        ),
+        count: current.received.count === undefined
+          ? undefined
+          : Math.max(0, current.received.count - 1),
+      },
+      links: current.links.loaded
+        ? {
+            ...current.links,
+            items: [
+              accepted,
+              ...current.links.items.filter(
+                (item) => item.username !== target,
+              ),
+            ],
+          }
+        : current.links,
+    }));
+    try {
+      await decideLinkRequest(target, "approve");
+      showToast("Link accepted.");
+    } catch (cause) {
+      setLists((current) => ({
+        ...current,
+        received: previousReceived,
+        links: previousLinks,
+      }));
+      setError(getApiErrorMessage(cause, "The link could not be updated."));
+    } finally {
+      setPending("");
+    }
+  };
 
   const relationshipLabel = profile
     ? {
         self: "This is your account",
-        following: "Following",
-        requested: "Request sent",
-        incoming: "This person requested to follow you",
-        not_following: profile.private ? "Private account" : "Public account",
+        linked: "You are linked",
+        requested: "Link request sent",
+        incoming: "This person sent you a link request",
+        not_linked: profile.private ? "Private account" : "Public account",
         blocked: "You blocked this account",
       }[profile.relationship]
     : "";
+
+  const showRequests = initialLoading || lists.received.items.length > 0;
+  const showSent = !initialLoading && lists.sent.items.length > 0;
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-7">
       <header>
         <p className="mb-1 text-sm text-muted-foreground">Your circle</p>
-        <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Links</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          A link is mutual. Send a request, and once it is accepted you both
+          share Instants with each other.
+        </p>
       </header>
+
       <ConnectionsSearch
         error={searchError}
         loading={searching}
         onBlock={() => void toggleSearchBlock()}
-        onRelationshipChange={() => {
-          if (!profile) return;
-          const target = profile.username;
-          const remove = profile.relationship === "following" ||
-            profile.relationship === "requested";
-          setPending(target);
-          void updateRelationship(target, remove)
-            .then((relationship) => {
-              setProfile((current) => current
-                ? { ...current, relationship: relationship ?? "not_following" }
-                : current);
-              showToast(remove ? "Connection updated." : "Request sent.");
-            })
-            .catch((cause: unknown) =>
-              setError(getApiErrorMessage(cause, "The relationship could not be updated.")),
-            )
-            .finally(() => setPending(""));
-        }}
+        onRelationshipChange={() => void changeSearchRelationship()}
         onSearch={(event) => void findProfile(event)}
         onUsernameChange={setUsername}
         pending={pending}
@@ -293,103 +424,79 @@ export function SocialExperience({
         username={username}
       />
 
-      <section aria-label="Connection lists">
-        <div
-          aria-label="Connection lists"
-          className="grid grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1"
-          role="tablist"
-        >
-          {(["followers", "following", "requests"] as const).map((tab) => (
-            <button
-              aria-selected={mainTab === tab}
-              className={`min-h-10 rounded-lg px-2 text-sm font-medium transition-colors ${
-                mainTab === tab
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              key={tab}
-              onClick={() => setMainTab(tab)}
-              role="tab"
-              type="button"
-            >
-              {tab === "followers" ? "Followers" : tab === "following" ? "Following" : "Requests"}
-              {tab === "requests" && (lists.received.count ?? 0) > 0 && (
-                <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
-                  {lists.received.count}
-                </span>
-              )}
-            </button>
-          ))}
+      {error && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-destructive" role="alert">{error}</p>
+          <button
+            className="text-sm underline underline-offset-4"
+            onClick={() => void loadAll()}
+            type="button"
+          >
+            Try again
+          </button>
         </div>
-        {mainTab === "requests" && (
-          <div aria-label="Follow requests" className="mt-3 flex gap-4 border-b border-border/60 px-1" role="tablist">
-            {(["received", "sent"] as const).map((tab) => (
-              <button
-                aria-selected={requestTab === tab}
-                className={`-mb-px border-b-2 px-1 py-2 text-sm ${
-                  requestTab === tab
-                    ? "border-foreground font-medium text-foreground"
-                    : "border-transparent text-muted-foreground"
-                }`}
-                key={tab}
-                onClick={() => setRequestTab(tab)}
-                role="tab"
-                type="button"
-              >
-                {tab === "received" ? "Received" : "Sent"}
-              </button>
-            ))}
-          </div>
+      )}
+
+      <div className="space-y-7">
+        {showRequests && (
+          <SocialListSection
+            count={lists.received.count ?? lists.received.items.length}
+            items={lists.received.items}
+            kind="received"
+            loading={initialLoading}
+            loadingMore={loadingMore.received}
+            nextCursor={lists.received.nextCursor}
+            onDecide={(target, action) => void decideRequest(target, action)}
+            onLoadMore={() => void loadMore("received")}
+            pending={pending}
+            title="Requests"
+          />
         )}
-        {error && !searching && (
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="text-sm text-destructive" role="alert">{error}</p>
-            <button
-              className="text-sm underline underline-offset-4"
-              onClick={() => void loadList(activeKey)}
-              type="button"
-            >
-              Try again
-            </button>
-          </div>
-        )}
-        <SocialListPanel
-          items={activeList.items}
-          kind={activeKey}
-          loading={loadingKey === activeKey || !activeList.loaded}
-          loadingMore={loadingMore}
-          nextCursor={activeList.nextCursor}
+
+        <SocialListSection
+          count={lists.links.nextCursor ? undefined : lists.links.items.length}
+          items={lists.links.items}
+          kind="links"
+          loading={initialLoading}
+          loadingMore={loadingMore.links}
+          nextCursor={lists.links.nextCursor}
           onBlock={(target) => void blockUser(target)}
-          onCancelRequest={(target) =>
+          onLoadMore={() => void loadMore("links")}
+          onUnlink={(target) =>
             void removeOptimistically(
-              "sent",
+              "links",
               target,
-              () => updateRelationship(target, true).then(() => undefined),
-              "Request cancelled.",
+              () => removeLink(target),
+              "Link removed.",
             )
           }
-          onDecide={(target, action) => void decideRequest(target, action)}
-          onFollow={(target) => void followBack(target)}
-          onLoadMore={() => {
-            if (activeList.nextCursor) {
-              void loadList(activeKey, activeList.nextCursor, true);
-            }
-          }}
-          onRemoveFollower={(target) => void removeOptimistically(
-            "followers",
-            target,
-            () => removeIncomingFollower(target),
-            "Follower removed.",
-          )}
-          onUnfollow={(target) => void removeOptimistically(
-            "following",
-            target,
-            () => updateRelationship(target, true).then(() => undefined),
-            "Unfollowed.",
-          )}
           pending={pending}
+          title="Your links"
         />
-      </section>
+
+        {showSent && (
+          <SocialListSection
+            count={lists.sent.nextCursor ? undefined : lists.sent.items.length}
+            items={lists.sent.items}
+            kind="sent"
+            loading={false}
+            loadingMore={loadingMore.sent}
+            nextCursor={lists.sent.nextCursor}
+            onCancelRequest={(target) =>
+              void removeOptimistically(
+                "sent",
+                target,
+                () => removeLink(target),
+                "Link request cancelled.",
+              )
+            }
+            onLoadMore={() => void loadMore("sent")}
+            pending={pending}
+            title="Waiting for acceptance"
+          />
+        )}
+      </div>
+
       {toast && (
         <div
           className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-background shadow-lg"

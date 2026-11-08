@@ -179,6 +179,8 @@ export async function dispatchTelegramNotification(
             ? actorProfile.username
             : "Someone";
         const message = {
+          link_request: `@${username} sent you a link request.`,
+          link_accepted: `@${username} accepted your link request.`,
           follow_request: `@${username} requested to follow you.`,
           follow_approved: `Your follow request to @${username} was approved.`,
           new_follower: `@${username} started following you.`,

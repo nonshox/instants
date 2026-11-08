@@ -8,8 +8,7 @@ export {
 } from "./profiles";
 export {
   decideIncomingRequest,
-  followByUsername,
-  removeFollower,
-  removeRelationship,
+  linkByUsername,
+  unlinkByUsername,
 } from "./relationships";
 export { SocialError, type PublicProfile } from "./types";

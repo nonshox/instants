@@ -58,7 +58,7 @@ describe("Instant store", () => {
     expect(useInstantStore.getState().pendingLikes.has(instant.id)).toBe(false);
   });
 
-  it("initializes the following feed without opening the local archive", async () => {
+  it("initializes the links feed without opening the local archive", async () => {
     vi.mocked(fetchFeedPage).mockResolvedValue({
       items: [instant],
       nextCursor: null,

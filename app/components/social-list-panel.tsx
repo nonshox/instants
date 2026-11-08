@@ -6,66 +6,70 @@ import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
 import type { ConnectionItem } from "@/src/features/social/client-api";
 
-export type SocialListKind = "followers" | "following" | "received" | "sent";
+export type SocialSectionKind = "links" | "received" | "sent";
 
-export function SocialListPanel({
+export function SocialListSection({
   kind,
+  title,
+  count,
   items,
   loading,
   loadingMore,
   nextCursor,
   pending,
   onLoadMore,
-  onFollow,
-  onUnfollow,
-  onRemoveFollower,
+  onUnlink,
   onBlock,
   onDecide,
   onCancelRequest,
 }: {
-  kind: SocialListKind;
+  kind: SocialSectionKind;
+  title: string;
+  count?: number;
   items: ConnectionItem[];
   loading: boolean;
   loadingMore: boolean;
   nextCursor: string | null;
   pending: string;
   onLoadMore: () => void;
-  onFollow: (username: string) => void;
-  onUnfollow: (username: string) => void;
-  onRemoveFollower: (username: string) => void;
-  onBlock: (username: string) => void;
-  onDecide: (username: string, action: "approve" | "reject") => void;
-  onCancelRequest: (username: string) => void;
+  onUnlink?: (username: string) => void;
+  onBlock?: (username: string) => void;
+  onDecide?: (username: string, action: "approve" | "reject") => void;
+  onCancelRequest?: (username: string) => void;
 }) {
-  const title = {
-    followers: "Followers",
-    following: "Following",
-    received: "Received requests",
-    sent: "Sent requests",
-  }[kind];
-
   return (
-    <section aria-label={title} className="mt-4">
+    <section aria-label={title}>
+      <div className="mb-2 flex items-baseline gap-2">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {typeof count === "number" && count > 0 && (
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+            {count}
+          </span>
+        )}
+      </div>
       {loading ? (
-        <p className="py-8 text-center text-sm text-muted-foreground" role="status">
-          Loading {title.toLowerCase()}...
+        <p
+          className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground"
+          role="status"
+        >
+          Loading...
         </p>
       ) : items.length === 0 ? (
-        <p className="rounded-xl bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
+        <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
           {emptyMessage(kind)}
         </p>
       ) : (
-        <ul className="divide-y divide-border/60">
+        <ul className="divide-y divide-border/60 rounded-xl bg-muted/20 px-3">
           {items.map((item) => {
             const isPending = pending === item.username;
             return (
               <li
-                className="flex min-h-[4.25rem] items-center gap-3 py-3"
+                className="flex min-h-[4rem] items-center gap-3 py-3"
                 key={item.username}
               >
                 <Link
                   aria-label={`Open @${item.username}'s profile`}
-                  className="grid size-10 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"
+                  className="grid size-10 shrink-0 place-items-center rounded-full bg-background text-muted-foreground"
                   href={`/u/${encodeURIComponent(item.username)}`}
                 >
                   <UserRound aria-hidden="true" className="size-5" />
@@ -84,64 +88,62 @@ export function SocialListPanel({
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  {kind === "followers" && (
-                    <Button
-                      disabled={isPending || item.relationship === "requested"}
-                      onClick={() => onFollow(item.username)}
-                      size="sm"
-                      type="button"
-                      variant={item.relationship === "following" ? "outline" : "default"}
-                    >
-                      {isPending ? <LoaderCircle className="animate-spin" /> :
-                        item.relationship === "following" ? "Following" :
-                          item.relationship === "requested" ? "Requested" :
-                            "Follow back"}
-                    </Button>
-                  )}
-                  {kind === "following" && (
+                  {kind === "links" && (
                     <Button
                       disabled={isPending}
-                      onClick={() => onUnfollow(item.username)}
+                      onClick={() => onUnlink?.(item.username)}
                       size="sm"
                       type="button"
                       variant="outline"
                     >
-                      {isPending ? <LoaderCircle className="animate-spin" /> : "Unfollow"}
+                      {isPending ? (
+                        <LoaderCircle aria-hidden="true" className="animate-spin" />
+                      ) : (
+                        "Unlink"
+                      )}
                     </Button>
                   )}
                   {kind === "received" && (
                     <>
                       <Button
                         disabled={isPending}
-                        onClick={() => onDecide(item.username, "approve")}
+                        onClick={() => onDecide?.(item.username, "approve")}
                         size="sm"
                         type="button"
                       >
-                        Accept
+                        {isPending ? (
+                          <LoaderCircle aria-hidden="true" className="animate-spin" />
+                        ) : (
+                          "Accept link"
+                        )}
                       </Button>
                       <Button
                         disabled={isPending}
-                        onClick={() => onDecide(item.username, "reject")}
+                        onClick={() => onDecide?.(item.username, "reject")}
                         size="sm"
                         type="button"
                         variant="ghost"
                       >
-                        Reject
+                        Decline
                       </Button>
                     </>
                   )}
                   {kind === "sent" && (
                     <Button
                       disabled={isPending}
-                      onClick={() => onCancelRequest(item.username)}
+                      onClick={() => onCancelRequest?.(item.username)}
                       size="sm"
                       type="button"
                       variant="outline"
                     >
-                      {isPending ? <LoaderCircle className="animate-spin" /> : "Cancel"}
+                      {isPending ? (
+                        <LoaderCircle aria-hidden="true" className="animate-spin" />
+                      ) : (
+                        "Cancel"
+                      )}
                     </Button>
                   )}
-                  {(kind === "followers" || kind === "following") && (
+                  {kind === "links" && (
                     <Menu.Root>
                       <Menu.Trigger
                         aria-label={`More actions for @${item.username}`}
@@ -159,17 +161,9 @@ export function SocialListPanel({
                       <Menu.Portal>
                         <Menu.Positioner align="end" sideOffset={4}>
                           <Menu.Popup className="z-50 min-w-40 rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/5 outline-none">
-                            {kind === "followers" && (
-                              <Menu.Item
-                                className="flex h-9 w-full items-center px-2 text-sm outline-none hover:bg-muted focus:bg-muted"
-                                onClick={() => onRemoveFollower(item.username)}
-                              >
-                                Remove follower
-                              </Menu.Item>
-                            )}
                             <Menu.Item
                               className="flex h-9 w-full items-center gap-2 px-2 text-sm text-destructive outline-none hover:bg-muted focus:bg-muted"
-                              onClick={() => onBlock(item.username)}
+                              onClick={() => onBlock?.(item.username)}
                             >
                               <Ban aria-hidden="true" className="size-4" />
                               Block
@@ -194,19 +188,22 @@ export function SocialListPanel({
           variant="outline"
         >
           {loadingMore ? (
-            <><LoaderCircle aria-hidden="true" className="animate-spin" /> Loading...</>
-          ) : "Load more"}
+            <>
+              <LoaderCircle aria-hidden="true" className="animate-spin" /> Loading...
+            </>
+          ) : (
+            "Load more"
+          )}
         </Button>
       )}
     </section>
   );
 }
 
-function emptyMessage(kind: SocialListKind): string {
+function emptyMessage(kind: SocialSectionKind): string {
   return {
-    followers: "No followers yet.",
-    following: "You are not following anyone yet.",
-    received: "No incoming follow requests.",
-    sent: "No sent requests waiting for approval.",
+    links: "No links yet. Search for someone and send a link request.",
+    received: "No incoming link requests.",
+    sent: "No sent link requests waiting for acceptance.",
   }[kind];
 }

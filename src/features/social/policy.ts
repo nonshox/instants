@@ -1,7 +1,7 @@
 export function canViewProfileDetails(
   isPrivate: boolean,
   isSelf: boolean,
-  isFollowing: boolean,
+  isLinked: boolean,
 ): boolean {
-  return !isPrivate || isSelf || isFollowing;
+  return !isPrivate || isSelf || isLinked;
 }

@@ -1,8 +1,8 @@
 export function canViewInstant(
   isPrivate: boolean,
   isOwner: boolean,
-  isFollowing: boolean,
+  isLinked: boolean,
   isBlocked: boolean,
 ): boolean {
-  return !isBlocked && (isOwner || !isPrivate || isFollowing);
+  return !isBlocked && (isOwner || !isPrivate || isLinked);
 }

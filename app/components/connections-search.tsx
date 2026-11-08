@@ -37,7 +37,7 @@ export function ConnectionsSearch({
           Find someone
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Search by their Mono username.
+          Search by their Mono username to send a link request.
         </p>
       </div>
       <form className="mt-4 flex gap-2" onSubmit={onSearch}>
@@ -109,44 +109,43 @@ export function ConnectionsSearch({
               )}
               <p className="mt-1 text-xs text-muted-foreground">
                 {relationshipLabel}
+                {profile.links !== null && profile.links > 0
+                  ? ` · ${profile.links} ${profile.links === 1 ? "link" : "links"}`
+                  : ""}
               </p>
             </div>
           </div>
           {profile.relationship !== "self" && (
             <div className="flex shrink-0 flex-wrap gap-2">
-              {profile.relationship !== "blocked" &&
-                profile.relationship !== "incoming" && (
-                  <Button
-                    aria-busy={pending === profile.username}
-                    disabled={pending === profile.username}
-                    onClick={onRelationshipChange}
-                    type="button"
-                    variant={
-                      profile.relationship === "following" ||
-                      profile.relationship === "requested"
-                        ? "outline"
-                        : "default"
-                    }
-                  >
-                    {pending === profile.username ? (
-                      <>
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="animate-spin"
-                        />
-                        Updating...
-                      </>
-                    ) : profile.relationship === "following" ? (
-                      "Unfollow"
-                    ) : profile.relationship === "requested" ? (
-                      "Cancel request"
-                    ) : profile.private ? (
-                      "Request to follow"
-                    ) : (
-                      "Follow"
-                    )}
-                  </Button>
-                )}
+              {profile.relationship !== "blocked" && (
+                <Button
+                  aria-busy={pending === profile.username}
+                  disabled={pending === profile.username}
+                  onClick={onRelationshipChange}
+                  type="button"
+                  variant={
+                    profile.relationship === "linked" ||
+                    profile.relationship === "requested"
+                      ? "outline"
+                      : "default"
+                  }
+                >
+                  {pending === profile.username ? (
+                    <>
+                      <LoaderCircle aria-hidden="true" className="animate-spin" />
+                      Updating...
+                    </>
+                  ) : profile.relationship === "linked" ? (
+                    "Unlink"
+                  ) : profile.relationship === "requested" ? (
+                    "Cancel request"
+                  ) : profile.relationship === "incoming" ? (
+                    "Accept link"
+                  ) : (
+                    "Link"
+                  )}
+                </Button>
+              )}
               <Button
                 aria-label={
                   profile.relationship === "blocked"

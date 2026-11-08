@@ -1,4 +1,4 @@
-import { FollowingFeedExperience } from "@/app/components/following-feed-experience";
+import { LinksFeedExperience } from "@/app/components/links-feed-experience";
 import { SessionExpired } from "@/app/components/workspace-shell";
 import { getCurrentAccount } from "@/src/features/auth/session";
 import { Suspense } from "react";
@@ -23,5 +23,5 @@ async function AuthenticatedFeed() {
     return <SessionExpired />;
   }
 
-  return <FollowingFeedExperience accountId={account.$id} />;
+  return <LinksFeedExperience accountId={account.$id} />;
 }

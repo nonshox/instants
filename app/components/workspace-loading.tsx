@@ -41,7 +41,7 @@ export function WorkspaceLoading() {
               className="overflow-hidden rounded-xl bg-muted/50 p-2"
               key={item}
             >
-              <div className="aspect-[4/3] animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+              <div className="aspect-square animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
               <div className="flex items-center gap-2 px-2 py-3">
                 <span className="size-7 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
                 <span className="h-3 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />

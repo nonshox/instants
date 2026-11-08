@@ -6,11 +6,10 @@ export type UserRow = Models.Row & {
   bio: string;
   avatar: string;
   private: boolean;
-  followers: number;
-  following: number;
+  links: number;
 };
 
-export type RelationshipRow = Models.Row & {
+export type LinkRow = Models.Row & {
   follower: string;
   following: string;
 };
@@ -26,21 +25,22 @@ export type BlockRow = Models.Row & {
   created: string;
 };
 
+export type Relationship =
+  | "self"
+  | "linked"
+  | "requested"
+  | "incoming"
+  | "not_linked"
+  | "blocked";
+
 export type PublicProfile = {
   username: string;
   name: string;
   bio: string;
   avatar: string;
   private: boolean;
-  followers: number | null;
-  following: number | null;
-  relationship:
-    | "self"
-    | "following"
-    | "requested"
-    | "incoming"
-    | "not_following"
-    | "blocked";
+  links: number | null;
+  relationship: Relationship;
 };
 
 export class SocialError extends Error {

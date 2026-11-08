@@ -4,7 +4,7 @@ import {
   createAdminClient,
   getAppwriteDatabaseId,
 } from "@/src/lib/appwrite/server";
-import { SocialError, type RelationshipRow, type UserRow } from "./types";
+import { SocialError, type LinkRow, type UserRow } from "./types";
 
 export const getTables = () => new TablesDB(createAdminClient());
 export const getDatabaseId = () => getAppwriteDatabaseId();
@@ -39,6 +39,37 @@ export async function findRelationship<Row extends Models.Row = Models.Row>(
     total: false,
   });
   return result.rows[0] ?? null;
+}
+
+/** A link is mutual, so the same row matches either direction. */
+export async function findLink(
+  firstId: string,
+  secondId: string,
+): Promise<LinkRow | null> {
+  const result = await getTables().listRows<LinkRow>({
+    databaseId: getDatabaseId(),
+    tableId: "follows",
+    queries: [
+      Query.or([
+        Query.and([
+          Query.equal("follower", firstId),
+          Query.equal("following", secondId),
+        ]),
+        Query.and([
+          Query.equal("follower", secondId),
+          Query.equal("following", firstId),
+        ]),
+      ]),
+      Query.limit(1),
+    ],
+    total: false,
+  });
+  return result.rows[0] ?? null;
+}
+
+/** Links are stored once per pair in a stable order so duplicates are impossible. */
+export function orderLinkPair(firstId: string, secondId: string): [string, string] {
+  return firstId < secondId ? [firstId, secondId] : [secondId, firstId];
 }
 
 export async function assertNotBlocked(
@@ -101,13 +132,14 @@ function logTransactionFailure(operation: string, error: unknown): void {
   console.error(`${operation} failed: ${detail}`);
 }
 
-export async function addFollow(
-  follower: string,
-  following: string,
+export async function addLink(
+  firstId: string,
+  secondId: string,
   transactionId: string,
 ): Promise<void> {
   const service = getTables();
-  await service.createRow<RelationshipRow>({
+  const [follower, following] = orderLinkPair(firstId, secondId);
+  await service.createRow<LinkRow>({
     databaseId: getDatabaseId(),
     tableId: "follows",
     rowId: ID.unique(),
@@ -120,7 +152,7 @@ export async function addFollow(
       databaseId: getDatabaseId(),
       tableId: "users",
       rowId: follower,
-      column: "following",
+      column: "links",
       value: 1,
       transactionId,
     }),
@@ -128,30 +160,30 @@ export async function addFollow(
       databaseId: getDatabaseId(),
       tableId: "users",
       rowId: following,
-      column: "followers",
+      column: "links",
       value: 1,
       transactionId,
     }),
   ]);
 }
 
-export async function removeFollowInTransaction(
-  follow: RelationshipRow,
+export async function removeLinkInTransaction(
+  link: LinkRow,
   transactionId: string,
 ): Promise<void> {
   const service = getTables();
   await service.deleteRow({
     databaseId: getDatabaseId(),
     tableId: "follows",
-    rowId: follow.$id,
+    rowId: link.$id,
     transactionId,
   });
   await Promise.all([
     service.decrementRowColumn({
       databaseId: getDatabaseId(),
       tableId: "users",
-      rowId: follow.follower,
-      column: "following",
+      rowId: link.follower,
+      column: "links",
       value: 1,
       min: 0,
       transactionId,
@@ -159,8 +191,8 @@ export async function removeFollowInTransaction(
     service.decrementRowColumn({
       databaseId: getDatabaseId(),
       tableId: "users",
-      rowId: follow.following,
-      column: "followers",
+      rowId: link.following,
+      column: "links",
       value: 1,
       min: 0,
       transactionId,

@@ -21,7 +21,7 @@ describe("social request inputs", () => {
     ).toBe(false);
   });
 
-  it("accepts only explicit follow-request decisions", () => {
+  it("accepts only explicit link-request decisions", () => {
     expect(
       requestDecisionSchema.safeParse({
         username: "quiet.day",
@@ -48,9 +48,10 @@ describe("social request inputs", () => {
     ).toBe(false);
   });
 
-  it("validates paginated relationship and request lists", () => {
-    expect(connectionListSchema.safeParse({ kind: "followers" }).success).toBe(true);
-    expect(connectionListSchema.safeParse({ kind: "unknown" }).success).toBe(false);
+  it("validates paginated link and request lists", () => {
+    expect(connectionListSchema.safeParse({}).success).toBe(true);
+    expect(connectionListSchema.parse({ cursor: "row-1" }).cursor).toBe("row-1");
+    expect(connectionListSchema.safeParse({ kind: "followers" }).success).toBe(false);
     expect(requestListSchema.parse({}).direction).toBe("received");
     expect(requestListSchema.parse({ direction: "sent", cursor: "row-1" }).direction)
       .toBe("sent");
@@ -59,7 +60,7 @@ describe("social request inputs", () => {
 });
 
 describe("private profile visibility", () => {
-  it("shows details only to the owner, approved followers, or everyone for public accounts", () => {
+  it("shows details only to the owner, linked accounts, or everyone for public accounts", () => {
     expect(canViewProfileDetails(true, true, false)).toBe(true);
     expect(canViewProfileDetails(true, false, true)).toBe(true);
     expect(canViewProfileDetails(true, false, false)).toBe(false);

@@ -48,7 +48,7 @@ export async function GET(request: Request) {
         );
     return NextResponse.json(page);
   } catch (error) {
-    return socialFailure("Incoming requests lookup", error);
+    return socialFailure("Link requests lookup", error);
   }
 }
 
@@ -77,6 +77,6 @@ export async function PATCH(request: Request) {
     );
     return NextResponse.json({ success: true });
   } catch (error) {
-    return socialFailure("Follow request decision", error);
+    return socialFailure("Link request decision", error);
   }
 }

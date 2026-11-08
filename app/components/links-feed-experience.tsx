@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useInstantStore } from "@/src/features/instants/store";
 import { formatInstantDate } from "@/src/features/instants/format-date";
 
-export function FollowingFeedExperience({
+export function LinksFeedExperience({
   accountId,
 }: {
   accountId: string;
@@ -75,7 +75,7 @@ export function FollowingFeedExperience({
                 <div className="size-9 rounded-full bg-muted" />
                 <div className="h-3 w-24 rounded-full bg-muted" />
               </div>
-              <div className="aspect-[4/5] rounded-xl bg-muted" />
+              <div className="aspect-square rounded-xl bg-muted" />
               <div className="mt-4 h-3 w-16 rounded-full bg-muted" />
             </div>
           ))}
@@ -88,7 +88,7 @@ export function FollowingFeedExperience({
           </div>
           <p className="text-sm font-medium">Your feed is quiet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Connect with people to see their Instants here.
+            Link with people to see their Instants here.
           </p>
           <Button
             className="mt-5 rounded-full"
@@ -97,7 +97,7 @@ export function FollowingFeedExperience({
             size="sm"
             variant="outline"
           >
-            Discover people
+            Find people
           </Button>
         </div>
       ) : (
@@ -132,7 +132,7 @@ export function FollowingFeedExperience({
 
                 {/* Instant image */}
                 <div
-                  className="group relative isolate aspect-[4/5] overflow-hidden rounded-xl bg-muted sm:rounded-2xl"
+                  className="group relative isolate aspect-square overflow-hidden rounded-xl bg-muted sm:rounded-2xl"
                   onDoubleClick={() => void handleDoubleTap(instant)}
                 >
                   <Image
