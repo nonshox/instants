@@ -156,7 +156,7 @@ export function LinksFeedExperience({
   return (
     <section
       aria-label="Instants feed"
-      className="mx-auto flex h-[calc(100dvh-146px)] min-h-[400px] w-full max-w-[560px] select-none flex-col overflow-hidden md:h-[calc(100dvh-130px)]"
+      className="mx-auto flex h-[calc(100dvh-145px)] min-h-[240px] w-full max-w-[560px] select-none flex-col overflow-hidden overscroll-contain md:h-[calc(100dvh-130px)]"
     >
       {error && (
         <div
@@ -176,10 +176,10 @@ export function LinksFeedExperience({
         </div>
       )}
 
-      {/* Stage */}
+      {/* Stage — no panning anywhere in the deck, so the page never scrolls */}
       <div
         aria-label="Photo deck"
-        className="relative mt-2 min-h-0 flex-1 [container-type:size]"
+        className="relative mt-2 min-h-0 flex-1 [container-type:size] [touch-action:none]"
       >
         {loading && total === 0 ? (
           <DeckSkeleton />
@@ -398,13 +398,18 @@ function DeckCard({
       }}
       onTap={(_event, info) => {
         if (!isTop) return;
-        const rect = cardRef.current?.getBoundingClientRect();
-        const middle = rect ? rect.left + rect.width / 2 : 0;
-        onDismiss(info.point.x < middle ? -1 : 1);
+        // Only a tap on the image card itself deals — nothing in the margins.
+        const target = _event.target;
+        if (target instanceof Element && cardRef.current?.contains(target)) {
+          const rect = cardRef.current?.getBoundingClientRect();
+          const middle = rect ? rect.left + rect.width / 2 : 0;
+          onDismiss(info.point.x < middle ? -1 : 1);
+        }
       }}
       style={{
         zIndex: 20 - position,
-        touchAction: "pan-y",
+        // framer-motion manages touch-action for drag gestures; the stage
+        // wrapper above pins touch-action: none for the whole deck.
         pointerEvents: exiting ? "none" : "auto",
       }}
       transition={
@@ -421,7 +426,7 @@ function DeckCard({
             ? `Photo by @${instant.username}, ${topIndex + 1} of ${total}. Activate for next image.`
             : undefined
         }
-        className={`relative size-[78cqmin] overflow-hidden rounded-[2rem] bg-muted shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70 ${
+        className={`relative size-[84cqmin] overflow-hidden rounded-[2rem] bg-muted shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70 ${
           isTop ? "cursor-pointer" : ""
         }`}
         onKeyDown={
@@ -460,7 +465,7 @@ function DeckSkeleton() {
       aria-label="Loading feed"
       className="absolute inset-0 grid place-items-center"
     >
-      <div className="size-[78cqmin] animate-pulse rounded-[2rem] bg-muted ring-1 ring-border/70" />
+      <div className="size-[84cqmin] animate-pulse rounded-[2rem] bg-muted ring-1 ring-border/70" />
     </div>
   );
 }
