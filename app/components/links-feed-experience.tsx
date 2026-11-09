@@ -1,14 +1,8 @@
-
 "use client";
 
 import Image from "next/image";
 import Link from "next/link";
-import {
-  Check,
-  Heart,
-  RefreshCw,
-  UsersRound,
-} from "lucide-react";
+import { Check, Heart, RefreshCw, UsersRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AnimatePresence,
@@ -55,15 +49,14 @@ function hashString(input: string): number {
 function pickTwoRandom(seed: number): [string, string] {
   const pool = [...RANDOM_POOL];
   const first = pool.splice(seed % pool.length, 1)[0];
-  const second = pool.splice(Math.floor(seed / pool.length) % pool.length, 1)[0];
+  const second = pool.splice(
+    Math.floor(seed / pool.length) % pool.length,
+    1,
+  )[0];
   return [first, second];
 }
 
-export function LinksFeedExperience({
-  accountId,
-}: {
-  accountId: string;
-}) {
+export function LinksFeedExperience({ accountId }: { accountId: string }) {
   const feed = useInstantStore((state) => state.feed);
   const loading = useInstantStore((state) => state.feedLoading);
   const loadingMore = useInstantStore((state) => state.loadingMore);
@@ -203,7 +196,7 @@ export function LinksFeedExperience({
         className="relative mt-2 min-h-0 flex-1 [touch-action:none]"
       >
         {loading && total === 0 ? (
-          <DeckSkeleton />
+          ""
         ) : total === 0 ? (
           <QuietFeed />
         ) : deckExhausted ? (
@@ -441,7 +434,10 @@ function DeckCard({
     }
   };
 
-  const handleTap = (event: EventTarget | null, point: { x: number; y: number }) => {
+  const handleTap = (
+    event: EventTarget | null,
+    point: { x: number; y: number },
+  ) => {
     if (!isTop) return;
     // Only a tap on the image card itself deals — nothing in the margins.
     if (event instanceof Element && cardRef.current?.contains(event)) {
@@ -548,21 +544,6 @@ function DeckCard({
   );
 }
 
-function DeckSkeleton() {
-  return (
-    <div
-      aria-busy="true"
-      aria-label="Loading feed"
-      className="absolute inset-0 grid place-items-center"
-    >
-      {/* Exact match of the card geometry — no layout shift when it loads */}
-      <div
-        className={`h-full aspect-square max-w-full animate-pulse rounded-[2rem] bg-muted/60 ${CARD_SHADOW}`}
-      />
-    </div>
-  );
-}
-
 function QuietFeed() {
   return (
     <div className="grid h-full place-items-center px-6 text-center">
@@ -606,11 +587,7 @@ function DeckComplete({
     <div className="grid h-full place-items-center px-6 text-center">
       <div className="flex flex-col items-center">
         <div className="mb-5 grid size-14 place-items-center rounded-full border border-emerald-500/30 bg-emerald-500/10">
-          <Check
-            aria-hidden="true"
-            className="text-emerald-600"
-            size={24}
-          />
+          <Check aria-hidden="true" className="text-emerald-600" size={24} />
         </div>
         <p className="text-sm font-semibold">You&apos;re all caught up</p>
         <p className="mt-1 max-w-56 text-sm text-muted-foreground">
