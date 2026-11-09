@@ -10,7 +10,13 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+} from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { recordInstantView } from "@/src/features/instants/client-api";
@@ -20,8 +26,15 @@ import type { FeedInstant } from "@/src/features/instants/client-api";
 import { UserAvatar } from "@/app/components/user-avatar";
 
 const VISIBLE_CARDS = 3;
-const DRAG_FLY_OFFSET = 120;
-const DRAG_FLY_VELOCITY = 600;
+const DRAG_COMMIT_DISTANCE = 165;
+const DRAG_COMMIT_SPEED = 650;
+
+type ExitVector = {
+  /** How far off-screen the card flies on exit. */
+  x: number;
+  y: number;
+  rotate: number;
+};
 
 // The row is 3 ordered main reactions + 2 "random" picks drawn from the
 // positive pool. The picks are seeded by account + UTC day: stable for
@@ -64,8 +77,12 @@ export function LinksFeedExperience({
 
   // How many cards have been dealt past the front of the deck.
   const [dismissedCount, setDismissedCount] = useState(0);
-  // Direction the top card flies off in, consumed by the exit animation.
-  const [exitDirection, setExitDirection] = useState(1);
+  // Where the top card flies off to, consumed by the exit animation.
+  const [exitVector, setExitVector] = useState<ExitVector>({
+    x: 620,
+    y: -40,
+    rotate: 16,
+  });
   // Cards mid-flight after being dealt away. They must not intercept
   // taps/focus while AnimatePresence is animating them out.
   const [exitingIds, setExitingIds] = useState<ReadonlySet<string>>(
@@ -94,20 +111,22 @@ export function LinksFeedExperience({
   const topInstant = topIndex < total ? feed[topIndex] : null;
   const visible = feed.slice(topIndex, topIndex + VISIBLE_CARDS);
 
-  const peekNextDirection = () => {
+  // Alternating fly-off direction for click/keyboard deals.
+  const dealVector = (): ExitVector => {
     dealDirection.current = -dealDirection.current || 1;
-    return dealDirection.current;
+    const sign = dealDirection.current;
+    return { x: sign * 620, y: -40, rotate: sign * 16 };
   };
 
   const dismissTop = useCallback(
-    (direction: number) => {
+    (vector: ExitVector) => {
       const current = topIndex < total ? feed[topIndex] : null;
       if (!current) return;
       // Mark as seen — dealt Instants leave the feed for good.
       void recordInstantView(current.id).catch(() => {
         // A missed view marker only means it may reappear on next visit.
       });
-      setExitDirection(direction);
+      setExitVector(vector);
       setExitingIds((ids) => new Set(ids).add(current.id));
       setDismissedCount((count) => count + 1);
       // Prefetch the next page when one card from the end is left.
@@ -129,7 +148,7 @@ export function LinksFeedExperience({
         burstTimer.current = window.setTimeout(() => setLikeBurst(0), 700);
       }
       void updateLike(topInstant, next);
-      dismissTop(peekNextDirection());
+      dismissTop(dealVector());
     },
     [pendingLikes, topInstant, updateLike, dismissTop],
   );
@@ -141,7 +160,7 @@ export function LinksFeedExperience({
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       if (event.key === "ArrowRight" && topInstant) {
         event.preventDefault();
-        dismissTop(peekNextDirection());
+        dismissTop(dealVector());
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -156,7 +175,7 @@ export function LinksFeedExperience({
   return (
     <section
       aria-label="Instants feed"
-      className="mx-auto flex h-[calc(100dvh-145px)] min-h-[240px] w-full max-w-[560px] select-none flex-col overflow-hidden overscroll-contain md:h-[calc(100dvh-130px)]"
+      className="mx-auto flex h-full min-h-[320px] w-full max-w-[560px] select-none flex-col"
     >
       {error && (
         <div
@@ -179,7 +198,7 @@ export function LinksFeedExperience({
       {/* Stage — no panning anywhere in the deck, so the page never scrolls */}
       <div
         aria-label="Photo deck"
-        className="relative mt-2 min-h-0 flex-1 [container-type:size] [touch-action:none]"
+        className="relative mt-2 min-h-0 flex-1 [touch-action:none]"
       >
         {loading && total === 0 ? (
           <DeckSkeleton />
@@ -201,7 +220,7 @@ export function LinksFeedExperience({
                   const position = visible.length - 1 - reversedIndex; // 0 = front
                   return (
                     <DeckCard
-                      exitDirection={exitDirection}
+                      exitVector={exitVector}
                       exiting={exitingIds.has(instant.id)}
                       instant={instant}
                       key={instant.id}
@@ -234,7 +253,7 @@ export function LinksFeedExperience({
 
       {/* Details below the image */}
       {topInstant && !loading && (
-        <div className="flex shrink-0 flex-col items-center gap-1 pb-1.5 pt-1">
+        <div className="flex shrink-0 flex-col items-center gap-1 pb-5 pt-1">
           {topInstant.caption && (
             <p
               className="max-w-[46ch] truncate px-4 text-center text-[11px] text-muted-foreground"
@@ -349,7 +368,7 @@ function ReactionButton({
 }
 
 function DeckCard({
-  exitDirection,
+  exitVector,
   exiting,
   instant,
   onDismiss,
@@ -357,10 +376,10 @@ function DeckCard({
   topIndex,
   total,
 }: {
-  exitDirection: number;
+  exitVector: ExitVector;
   exiting: boolean;
   instant: FeedInstant;
-  onDismiss: (direction: number) => void;
+  onDismiss: (vector: ExitVector) => void;
   position: number;
   topIndex: number;
   total: number;
@@ -368,6 +387,52 @@ function DeckCard({
   const isTop = position === 0 && !exiting;
   const reduceMotion = useReducedMotion();
   const cardRef = useRef<HTMLDivElement>(null);
+  const dragX = useMotionValue(0);
+  const dragY = useMotionValue(0);
+  // The farther the image is pushed from center, the smaller it gets.
+  const shrink = useTransform([dragX, dragY], (values: number[]) => {
+    const [x, y] = values;
+    const distance = Math.hypot(x, y);
+    return Math.max(0.72, 1 - distance / 1100);
+  });
+
+  const handleDragEnd: (info: {
+    offset: { x: number; y: number };
+    velocity: { x: number; y: number };
+  }) => void = (info) => {
+    const dx = info.offset.x;
+    const dy = info.offset.y;
+    const distance = Math.hypot(dx, dy);
+    const speed = Math.hypot(info.velocity.x, info.velocity.y);
+    // Returned near center — the card stays.
+    if (distance < DRAG_COMMIT_DISTANCE && speed < DRAG_COMMIT_SPEED) {
+      return;
+    }
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      onDismiss({
+        x: Math.sign(dx || 1) * 640,
+        y: dy * 0.4,
+        rotate: Math.sign(dx || 1) * 17,
+      });
+    } else {
+      onDismiss({
+        x: dx * 0.35,
+        y: Math.sign(dy || 1) * 720,
+        rotate: Math.sign(dy || 1) * 11,
+      });
+    }
+  };
+
+  const handleTap = (event: EventTarget | null, point: { x: number; y: number }) => {
+    if (!isTop) return;
+    // Only a tap on the image card itself deals — nothing in the margins.
+    if (event instanceof Element && cardRef.current?.contains(event)) {
+      const rect = cardRef.current?.getBoundingClientRect();
+      const middle = rect ? rect.left + rect.width / 2 : 0;
+      const side = point.x < middle ? -1 : 1;
+      onDismiss({ x: side * 620, y: -40, rotate: side * 16 });
+    }
+  };
 
   return (
     <motion.div
@@ -379,37 +444,16 @@ function DeckCard({
       }}
       aria-hidden={!isTop}
       className="absolute inset-0 grid place-items-center"
-      drag={isTop ? "x" : false}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={1}
-      dragMomentum={false}
       exit={{
         opacity: 0,
-        rotate: exitDirection * 18,
+        rotate: exitVector.rotate,
+        x: exitVector.x,
+        y: exitVector.y,
         transition: { duration: 0.28, ease: "easeOut" },
-        x: exitDirection * 620,
       }}
       initial={false}
-      onDragEnd={(_event, info) => {
-        const flies =
-          Math.abs(info.offset.x) > DRAG_FLY_OFFSET ||
-          Math.abs(info.velocity.x) > DRAG_FLY_VELOCITY;
-        if (flies) onDismiss(info.offset.x >= 0 ? 1 : -1);
-      }}
-      onTap={(_event, info) => {
-        if (!isTop) return;
-        // Only a tap on the image card itself deals — nothing in the margins.
-        const target = _event.target;
-        if (target instanceof Element && cardRef.current?.contains(target)) {
-          const rect = cardRef.current?.getBoundingClientRect();
-          const middle = rect ? rect.left + rect.width / 2 : 0;
-          onDismiss(info.point.x < middle ? -1 : 1);
-        }
-      }}
       style={{
         zIndex: 20 - position,
-        // framer-motion manages touch-action for drag gestures; the stage
-        // wrapper above pins touch-action: none for the whole deck.
         pointerEvents: exiting ? "none" : "auto",
       }}
       transition={
@@ -417,43 +461,59 @@ function DeckCard({
           ? { duration: 0 }
           : { damping: 30, stiffness: 320, type: "spring" }
       }
-      whileDrag={{ scale: 1.03 }}
     >
-      <div
-        ref={cardRef}
-        aria-label={
-          isTop
-            ? `Photo by @${instant.username}, ${topIndex + 1} of ${total}. Activate for next image.`
-            : undefined
-        }
-        className={`relative size-[84cqmin] overflow-hidden rounded-[2rem] bg-muted shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70 ${
-          isTop ? "cursor-pointer" : ""
-        }`}
-        onKeyDown={
-          isTop
-            ? (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onDismiss(1);
-                }
-              }
-            : undefined
-        }
-        role={isTop ? "button" : undefined}
-        tabIndex={isTop ? 0 : undefined}
+      <motion.div
+        drag={isTop || undefined}
+        dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+        dragElastic={0.45}
+        dragMomentum={false}
+        onDragEnd={(_event, info) => handleDragEnd(info)}
+        onTap={(_event, info) => handleTap(_event.target, info.point)}
+        className="grid h-full place-items-center"
+        style={{
+          x: dragX,
+          y: dragY,
+          scale: shrink,
+          // framer-motion manages touch-action for drag gestures; the stage
+          // wrapper above pins touch-action: none for the whole deck.
+        }}
       >
-        <Image
-          alt={`Instant shared by @${instant.username}`}
-          className="pointer-events-none object-cover"
-          draggable={false}
-          fill
-          loading={isTop ? "eager" : "lazy"}
-          preload={isTop}
-          sizes="(max-width: 640px) 70vw, 300px"
-          src={instant.imageUrl}
-          unoptimized
-        />
-      </div>
+        <div
+          ref={cardRef}
+          aria-label={
+            isTop
+              ? `Photo by @${instant.username}, ${topIndex + 1} of ${total}. Activate for next image.`
+              : undefined
+          }
+          className={`relative h-full aspect-square max-w-full overflow-hidden rounded-[2rem] bg-muted shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70 ${
+            isTop ? "cursor-pointer" : ""
+          }`}
+          onKeyDown={
+            isTop
+              ? (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onDismiss({ x: 620, y: -40, rotate: 16 });
+                  }
+                }
+              : undefined
+          }
+          role={isTop ? "button" : undefined}
+          tabIndex={isTop ? 0 : undefined}
+        >
+          <Image
+            alt={`Instant shared by @${instant.username}`}
+            className="pointer-events-none object-cover"
+            draggable={false}
+            fill
+            loading={isTop ? "eager" : "lazy"}
+            preload={isTop}
+            sizes="(max-width: 640px) 70vw, 300px"
+            src={instant.imageUrl}
+            unoptimized
+          />
+        </div>
+      </motion.div>
     </motion.div>
   );
 }
@@ -465,7 +525,7 @@ function DeckSkeleton() {
       aria-label="Loading feed"
       className="absolute inset-0 grid place-items-center"
     >
-      <div className="size-[84cqmin] animate-pulse rounded-[2rem] bg-muted ring-1 ring-border/70" />
+      <div className="h-[72%] aspect-square max-w-[72%] animate-pulse rounded-[1.75rem] bg-muted/70 ring-1 ring-border/50" />
     </div>
   );
 }

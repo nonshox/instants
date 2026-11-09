@@ -22,7 +22,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-background/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(0,0,0,0.07)] backdrop-blur-md md:hidden"
+      className="z-30 shrink-0 border-t border-border/80 bg-background/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_14px_rgba(0,0,0,0.07)] backdrop-blur-md md:hidden"
     >
       <ul className="mx-auto grid h-12 max-w-md grid-cols-4">
         {items.map((item) => {

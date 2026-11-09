@@ -91,8 +91,8 @@ export function WorkspaceShell({
   };
 
   return (
-    <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+      <header className="shrink-0 border-b border-border/70 bg-background/80 backdrop-blur-md">
         <div className="relative mx-auto flex min-h-14 w-full max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex items-center gap-2">
             <Button
@@ -239,7 +239,13 @@ export function WorkspaceShell({
           {error}
         </p>
       )}
-      <main className="mx-auto w-full max-w-3xl px-4 pt-6 pb-16 sm:px-6 sm:pt-8 md:pb-10">
+      <main
+        className={`mx-auto min-h-0 w-full max-w-3xl flex-1 px-4 pt-6 sm:px-6 sm:pt-8 ${
+          // The feed page is a full-bleed deck — it must never scroll,
+          // not even near the drag limits.
+          pathname === "/" ? "overflow-hidden" : "overflow-y-auto"
+        }`}
+      >
         {children}
       </main>
       <MobileNav />
