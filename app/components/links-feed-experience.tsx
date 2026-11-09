@@ -28,6 +28,8 @@ import { UserAvatar } from "@/app/components/user-avatar";
 const VISIBLE_CARDS = 3;
 const DRAG_COMMIT_DISTANCE = 165;
 const DRAG_COMMIT_SPEED = 650;
+const CARD_SHADOW =
+  "shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70";
 
 type ExitVector = {
   /** How far off-screen the card flies on exit. */
@@ -36,9 +38,8 @@ type ExitVector = {
   rotate: number;
 };
 
-// The row is 3 ordered main reactions + 2 "random" picks drawn from the
-// positive pool. The picks are seeded by account + UTC day: stable for
-// hydration, unique per viewer, and reshuffled daily.
+// The row is 3 ordered main reactions + 2 fixed "wild card" picks sampled
+// per viewer (hash-seeded so it is hydration-safe and unique per account).
 const MAIN_REACTIONS = ["❤️", "🔥", "😍"] as const;
 const RANDOM_POOL = ["👏", "🙌", "🤩", "😄", "🎉", "💪", "🥹", "✨"];
 
@@ -88,7 +89,10 @@ export function LinksFeedExperience({
   const [exitingIds, setExitingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [likeBurst, setLikeBurst] = useState(0);
+  const [likeBurst, setLikeBurst] = useState<{
+    id: number;
+    emoji: string;
+  } | null>(null);
   const burstTimer = useRef<number | null>(null);
   const dealDirection = useRef(1);
 
@@ -143,9 +147,9 @@ export function LinksFeedExperience({
       const next = topInstant.reaction === emoji ? null : emoji;
       // A reaction deals the photo away — the image disappears for good.
       if (next !== null) {
-        setLikeBurst((count) => count + 1);
+        setLikeBurst((burst) => ({ id: (burst?.id ?? 0) + 1, emoji }));
         if (burstTimer.current) window.clearTimeout(burstTimer.current);
-        burstTimer.current = window.setTimeout(() => setLikeBurst(0), 700);
+        burstTimer.current = window.setTimeout(() => setLikeBurst(null), 700);
       }
       void updateLike(topInstant, next);
       dismissTop(dealVector());
@@ -165,12 +169,10 @@ export function LinksFeedExperience({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-     
   }, [dismissTop, topInstant]);
 
   const deckExhausted = total > 0 && topIndex >= total;
   const chosenReaction = topInstant ? topInstant.reaction : null;
-  const mainReactions = MAIN_REACTIONS;
 
   return (
     <section
@@ -233,18 +235,16 @@ export function LinksFeedExperience({
                 })}
             </AnimatePresence>
 
-            {/* Like burst */}
-            {likeBurst > 0 && (
+            {/* Your reaction bursts on top — the emoji you picked, big */}
+            {likeBurst && (
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 z-30 grid place-items-center"
-                key={likeBurst}
+                key={likeBurst.id}
               >
-                <Heart
-                  className="animate-in zoom-in-50 fill-white text-white drop-shadow-[0_2px_16px_rgba(0,0,0,0.45)] duration-300"
-                  size={72}
-                  strokeWidth={1.4}
-                />
+                <span className="animate-in zoom-in-50 text-8xl drop-shadow-[0_2px_16px_rgba(0,0,0,0.45)] duration-300">
+                  {likeBurst.emoji}
+                </span>
               </div>
             )}
           </>
@@ -294,7 +294,7 @@ export function LinksFeedExperience({
               className="flex items-center gap-2"
               role="group"
             >
-              {mainReactions.map((emoji) => (
+              {MAIN_REACTIONS.map((emoji) => (
                 <ReactionButton
                   disabled={pendingLikes.has(topInstant.id)}
                   emoji={emoji}
@@ -387,6 +387,24 @@ function DeckCard({
   const isTop = position === 0 && !exiting;
   const reduceMotion = useReducedMotion();
   const cardRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imageReady, setImageReady] = useState(false);
+
+  // Cached photos can complete before hydration attaches onLoad — and
+  // onLoad is unreliable for some dynamic sources, so poll until it flips.
+  useEffect(() => {
+    if (imgRef.current?.complete) {
+      setImageReady(true);
+      return;
+    }
+    const id = window.setInterval(() => {
+      if (imgRef.current?.complete) {
+        setImageReady(true);
+        window.clearInterval(id);
+      }
+    }, 120);
+    return () => window.clearInterval(id);
+  }, []);
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
   // The farther the image is pushed from center, the smaller it gets.
@@ -485,7 +503,7 @@ function DeckCard({
               ? `Photo by @${instant.username}, ${topIndex + 1} of ${total}. Activate for next image.`
               : undefined
           }
-          className={`relative h-full aspect-square max-w-full overflow-hidden rounded-[2rem] bg-muted shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70 ${
+          className={`relative h-full aspect-square max-w-full overflow-hidden rounded-[2rem] bg-muted ${CARD_SHADOW} ${
             isTop ? "cursor-pointer" : ""
           }`}
           onKeyDown={
@@ -502,16 +520,28 @@ function DeckCard({
           tabIndex={isTop ? 0 : undefined}
         >
           <Image
+            ref={imgRef}
             alt={`Instant shared by @${instant.username}`}
-            className="pointer-events-none object-cover"
+            className={`pointer-events-none object-cover transition-opacity duration-500 ${
+              imageReady ? "opacity-100" : "opacity-0"
+            }`}
             draggable={false}
             fill
             loading={isTop ? "eager" : "lazy"}
+            onLoad={() => setImageReady(true)}
             preload={isTop}
-            sizes="(max-width: 640px) 70vw, 300px"
+            sizes="(max-width: 640px) 100vw, 560px"
             src={instant.imageUrl}
             unoptimized
           />
+          {/* Hold a pulsing placeholder in-card until the photo has faded in —
+              never an empty box. */}
+          {!imageReady && (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 animate-pulse bg-muted"
+            />
+          )}
         </div>
       </motion.div>
     </motion.div>
@@ -525,7 +555,10 @@ function DeckSkeleton() {
       aria-label="Loading feed"
       className="absolute inset-0 grid place-items-center"
     >
-      <div className="h-[72%] aspect-square max-w-[72%] animate-pulse rounded-[1.75rem] bg-muted/70 ring-1 ring-border/50" />
+      {/* Exact match of the card geometry — no layout shift when it loads */}
+      <div
+        className={`h-full aspect-square max-w-full animate-pulse rounded-[2rem] bg-muted/60 ${CARD_SHADOW}`}
+      />
     </div>
   );
 }
