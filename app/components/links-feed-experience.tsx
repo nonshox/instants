@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Check, Heart, RefreshCw, UsersRound } from "lucide-react";
+import { Check, Heart, LoaderCircle, RefreshCw, UsersRound } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AnimatePresence,
@@ -135,7 +135,9 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
       setExitingIds((ids) => new Set(ids).add(current.id));
       setDismissedCount((count) => count + 1);
       // Prefetch the next page when one card from the end is left.
-      if (topIndex + 1 >= visibleTotal - 1 && hasMore && !loadingMore) {
+      if (topIndex + 1 >= visibleTotal - 3 && hasMore && !loadingMore) {
+        // Prefetch 3 cards early instead of at the wall — the fetch overlaps
+        // with the user's taps so the next page is already here when needed.
         void loadFeedPage(nextCursor, true);
       }
     },
@@ -704,6 +706,33 @@ function DeckComplete({
   loadingMore: boolean;
   onLoadMore: () => void;
 }) {
+  // Never flash "All caught up" while more Instants are still on the wire —
+  // show a soft syncing state instead; only flip to the end state when the
+  // server says there's nothing more to give.
+  const fetchingMore = hasMore && loadingMore;
+  if (fetchingMore) {
+    return (
+      <div
+        aria-busy="true"
+        aria-label="Loading more Instants"
+        className="grid h-full place-items-center px-6 text-center"
+        role="status"
+      >
+        <div className="flex flex-col items-center">
+          <div className="mb-5 grid size-14 place-items-center rounded-full border border-border">
+            <LoaderCircle
+              aria-hidden="true"
+              className="size-5 animate-spin text-muted-foreground"
+            />
+          </div>
+          <p className="text-sm font-medium text-muted-foreground">
+            Getting the latest Instants...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid h-full place-items-center px-6 text-center">
       <div className="flex flex-col items-center">

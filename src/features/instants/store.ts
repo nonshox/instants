@@ -153,8 +153,11 @@ export const useInstantStore = create<InstantState>((set, get) => ({
       // Best-effort — the archive keeps its previous engagement snapshot.
     }
   },
-  loadFeedPage: async (cursor, append) =>
-    loadFeed(cursor, append, set, get().accountId),
+  loadFeedPage: async (cursor, append) => {
+    // Append without a cursor means "we already reached the tail" — nothing to fetch.
+    if (append && !cursor) return;
+    return loadFeed(cursor, append, set, get().accountId);
+  },
   upload: async (file, caption) => {
     const accountId = get().accountId;
     if (!accountId) return null;

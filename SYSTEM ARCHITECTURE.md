@@ -230,7 +230,10 @@ Ten current tables were listed and verified as enabled; row security
 enabled; configured columns/indexes showed `available`. This is the
 intended table set. Do not add more tables without explicit approval.
 `views` was added with explicit product approval alongside the reaction
-row — it powers seen-feed-filtering and the owner-facing seen-by list.
+row — it powers the owner-facing seen-by list. (An earlier design used
+the same rows to filter seen Instants out of the viewer's feed; that was
+removed by product decision — Instants appear until the 36h expiry
+deletes them, seen or not.)
 
 ### `users`
 
@@ -295,7 +298,8 @@ maintained only by trusted server-side operations.
 ### `views`
 
 One row per viewer per Instant; records that they have dealt or reacted
-to it. Powers feed seen-filtering and the owner's seen-by list.
+to it. Powers the owner's seen-by list. (Rows do NOT filter the feed —
+that behaviour was removed by product decision.)
 
 -   `instant`: varchar(36), required; the Instant row ID.
 -   `user`: varchar(36), required; the viewer's Appwrite user ID.

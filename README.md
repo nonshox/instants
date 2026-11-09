@@ -24,10 +24,12 @@ The current application foundation includes:
 - Idempotent like/unlike actions with server-side counters and in-app
   notifications.
 - Paginated notification inbox, read state, and filtering of blocked users.
-- Typed per-viewer reactions (emoji persisted per Instant), seen-aware
-  feed filtering (dealt or reacted Instants leave your feed), per-device
+- Typed per-viewer reactions (emoji persisted per Instant); reactions still
+  record a view for the owner's seen-by list, but do NOT hide the mono
+  from the feed — your Instants live until the 36h expiry. Per-device
   "Mute this person" in the identity row, an unseen-count badge on the
-  Feed tab, an owner-facing seen-by list on own Instants with live
+  Feed tab (localStorage, counts the loaded tray client-side), an
+  owner-facing seen-by list on own Instants with live
   refresh, and a daily digest gate: at most one reaction ping per Instant
   per 24h per viewer (subsequent reactions silent). Owner engagement
   (reactions, viewers) is snapshotted into the local IndexedDB archive,

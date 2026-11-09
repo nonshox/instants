@@ -72,28 +72,6 @@ export async function recordViewIfAbsent(
   }
 }
 
-/** Single batched query: which of these instants has the viewer already seen? */
-export async function listSeenIds(
-  viewerId: string,
-  instantIds: string[],
-): Promise<Set<string>> {
-  if (instantIds.length === 0) {
-    return new Set();
-  }
-  const result = await getTables().listRows<Models.Row & { instant: string }>({
-    databaseId: getDatabaseId(),
-    tableId: "views",
-    queries: [
-      Query.equal("user", viewerId),
-      Query.equal("instant", instantIds),
-      Query.limit(250),
-      Query.select(["instant"]),
-    ],
-    total: false,
-  });
-  return new Set(result.rows.map((row) => row.instant));
-}
-
 /** Owner-facing seen-by list for one of their own Instants. */
 export async function listViewersOfInstant(
   instantId: string,

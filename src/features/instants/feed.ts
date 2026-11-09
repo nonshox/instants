@@ -9,11 +9,10 @@ import {
   type UserPrivacyRow,
 } from "./data";
 import { normalizeReaction } from "./reactions";
-import { listSeenIds } from "./views";
 
-const pageSize = 20;
+const pageSize = 40;
 const querySize = 100;
-const maxScanned = 500;
+const maxScanned = 300;
 
 export type FeedInstant = {
   id: string;
@@ -54,6 +53,7 @@ export async function getFeedPage(
   while (scanned < maxScanned) {
     const queries = [
       Query.notEqual("user", viewerId),
+      Query.greaterThan("expires", new Date().toISOString()),
       Query.orderDesc("expires"),
       Query.limit(querySize),
       ...(queryCursor ? [Query.cursorAfter(queryCursor)] : []),
@@ -77,12 +77,10 @@ export async function getFeedPage(
     const visibleRows = rows.filter(
       (row) => linked.has(row.user) && !blocked.has(row.user),
     );
-    // Skip Instants the viewer has already dealt or reacted to.
-    const seen = await listSeenIds(
-      viewerId,
-      visibleRows.map((row) => row.$id),
-    );
-    const fresh = visibleRows.filter((row) => !seen.has(row.$id));
+    // Seen status is NOT used to hide Instants — a dealt mono stays on screen
+    // until the 36h expiry deletes it. The owner still sees the view in their
+    // seen-by list (recordInstantView writes independently).
+    const fresh = visibleRows;
     if (fresh.length > 0) {
       const profiles = await getProfiles(
         [...new Set(fresh.map((row) => row.user))],
