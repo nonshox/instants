@@ -20,6 +20,7 @@ import type { FeedInstant } from "@/src/features/instants/client-api";
 import type { ArchivedInstant } from "@/src/features/instants/archive";
 import { formatInstantDate } from "@/src/features/instants/format-date";
 import { UserAvatar } from "@/app/components/user-avatar";
+import { SeenByStrip } from "@/app/components/seen-by-strip";
 
 type FeedConfig = {
   mode: "feed";
@@ -97,7 +98,7 @@ export function InstantViewer(props: InstantViewerProps) {
     setLikedFlash((count) => count + 1);
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setLikedFlash(0), 700);
-    if (!props.instant.likedByViewer && !props.pendingLike) {
+    if (!(props.instant.reaction !== null) && !props.pendingLike) {
       props.onToggleLike(props.instant, true);
     }
   };
@@ -247,17 +248,17 @@ export function InstantViewer(props: InstantViewerProps) {
             )}
             <div className="flex items-center gap-4">
               <button
-                aria-label={props.instant.likedByViewer ? "Unlike Instant" : "Like Instant"}
-                aria-pressed={props.instant.likedByViewer}
+                aria-label={(props.instant.reaction !== null) ? "Unlike Instant" : "Like Instant"}
+                aria-pressed={(props.instant.reaction !== null)}
                 className="inline-flex size-11 items-center justify-center rounded-full outline-none transition active:scale-90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                 disabled={props.pendingLike}
-                onClick={() => props.onToggleLike(props.instant, !props.instant.likedByViewer)}
+                onClick={() => props.onToggleLike(props.instant, !(props.instant.reaction !== null))}
                 type="button"
               >
                 <Heart
                   aria-hidden="true"
                   className={`size-7 transition-colors ${
-                    props.instant.likedByViewer
+                    (props.instant.reaction !== null)
                       ? "fill-rose-500 text-rose-500"
                       : "text-foreground"
                   }`}
@@ -342,6 +343,9 @@ export function InstantViewer(props: InstantViewerProps) {
                 </>
               )}
             </div>
+
+            {/* Who has seen this Instant */}
+            <SeenByStrip photo={props.photo} />
 
             {/* Meta strip */}
             <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">

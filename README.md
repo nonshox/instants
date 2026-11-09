@@ -24,6 +24,15 @@ The current application foundation includes:
 - Idempotent like/unlike actions with server-side counters and in-app
   notifications.
 - Paginated notification inbox, read state, and filtering of blocked users.
+- Typed per-viewer reactions (emoji persisted per Instant), seen-aware
+  feed filtering (dealt or reacted Instants leave your feed), and an
+  owner-facing seen-by list on own Instants. Owner engagement
+  (reactions, viewers) is snapshotted into the local IndexedDB archive,
+  with ids resolved to current identities at render time (linked
+  accounts only); identities never leave the server with cached names.
+  Daily cleanup purges reactions, views, and instant-linked
+  notifications together with expired Instants, and also purges
+  already-read notifications on every run (unread rows are kept).
 - Paginated link lists, received and sent link requests,
   public user profiles, and privacy controls for blocked accounts.
 - One-time hashed Telegram linking, webhook verification, disconnect, and

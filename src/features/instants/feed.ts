@@ -8,6 +8,8 @@ import {
   type InstantRow,
   type UserPrivacyRow,
 } from "./data";
+import { normalizeReaction } from "./reactions";
+import { listSeenIds } from "./views";
 
 const pageSize = 20;
 const querySize = 100;
@@ -20,7 +22,8 @@ export type FeedInstant = {
   avatar: string;
   caption: string;
   likes: number;
-  likedByViewer: boolean;
+  /** Viewer's chosen reaction emoji, or null when not reacted. */
+  reaction: string | null;
   createdAt: string;
   imageUrl: string;
 };
@@ -74,11 +77,17 @@ export async function getFeedPage(
     const visibleRows = rows.filter(
       (row) => linked.has(row.user) && !blocked.has(row.user),
     );
-    if (visibleRows.length > 0) {
+    // Skip Instants the viewer has already dealt or reacted to.
+    const seen = await listSeenIds(
+      viewerId,
+      visibleRows.map((row) => row.$id),
+    );
+    const fresh = visibleRows.filter((row) => !seen.has(row.$id));
+    if (fresh.length > 0) {
       const profiles = await getProfiles(
-        [...new Set(visibleRows.map((row) => row.user))],
+        [...new Set(fresh.map((row) => row.user))],
       );
-      for (const row of visibleRows) {
+      for (const row of fresh) {
         const owner = profiles.get(row.user);
         if (!owner) {
           continue;
@@ -90,7 +99,7 @@ export async function getFeedPage(
           avatar: owner.avatar ?? "",
           caption: row.cap,
           likes: row.likes,
-          likedByViewer: false,
+          reaction: null,
           createdAt: row.$createdAt,
           imageUrl: `/api/instants/${row.$id}/image`,
         });
@@ -127,21 +136,29 @@ async function addViewerLikes(
   if (items.length === 0) {
     return items;
   }
-  const result = await getTables().listRows<Models.Row & { instant: string }>({
+  const result = await getTables().listRows<
+    Models.Row & { instant: string; emoji?: string | null }
+  >({
     databaseId: getDatabaseId(),
     tableId: "likes",
     queries: [
       Query.equal("user", viewerId),
-      Query.equal("instant", items.map((item) => item.id)),
+      Query.equal(
+        "instant",
+        items.map((item) => item.id),
+      ),
       Query.limit(pageSize),
-      Query.select(["instant"]),
+      Query.select(["instant", "emoji"]),
     ],
     total: false,
   });
-  const likedIds = new Set(result.rows.map((row) => row.instant));
+  // O(n) single pass — the unique instant_user index guarantees one row per pair.
+  const reactionByInstant = new Map(
+    result.rows.map((row) => [row.instant, normalizeReaction(row.emoji)]),
+  );
   return items.map((item) => ({
     ...item,
-    likedByViewer: likedIds.has(item.id),
+    reaction: reactionByInstant.get(item.id) ?? null,
   }));
 }
 

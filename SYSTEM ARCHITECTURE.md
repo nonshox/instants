@@ -226,9 +226,11 @@ web app. Disable buttons when required inputs are empty/invalid.
 Project: - Name: `app` - Project ID: `6aea15b40039e4912cb4` - Database
 name: `Production TablesDB` - Database ID: `6aea258f001dcc22a0c5`
 
-Nine current tables were listed and verified as enabled; row security
+Ten current tables were listed and verified as enabled; row security
 enabled; configured columns/indexes showed `available`. This is the
 intended table set. Do not add more tables without explicit approval.
+`views` was added with explicit product approval alongside the reaction
+row — it powers seen-feed-filtering and the owner-facing seen-by list.
 
 ### `users`
 
@@ -277,6 +279,28 @@ maintained only by trusted server-side operations.
 -   `instant`: varchar(36), required.
 -   `user`: varchar(36), required. Indexes: `instant_user_uq`
     unique(`instant`,`user`); `user_idx` on `user`.
+-   `emoji`: varchar(8), optional in the database (Application: always
+    written), whitelist-checked by the server; stores the viewer's chosen
+    reaction emoji. Rows predating the column were backfilled to `❤️`.
+    Reaction semantics unchanged: one reaction per viewer per Instant;
+    switching emoji rewrites the same row and does not touch counters.
+    `instants.likes` / `users.likes` remain the total reaction counters. Allowed values: `❤️ 🔥 😍 👏 🙌 🤩 😄 🎉 💪 🥹 ✨`
+    (positive reactions only). Appwrite refused a default on a required
+    column, so requiredness is enforced at the application layer.
+
+### `views`
+
+One row per viewer per Instant; records that they have dealt or reacted
+to it. Powers feed seen-filtering and the owner's seen-by list.
+
+-   `instant`: varchar(36), required; the Instant row ID.
+-   `user`: varchar(36), required; the viewer's Appwrite user ID.
+-   `seen`: datetime, required; first sighting (writes are idempotent on
+    `instant_user_uq`). Indexes: `instant_user_uq`
+    unique(`instant`,`user`); `instant_idx` on `instant` (desc).
+-   Visibility matches Instant viewing exactly; an owner may only read
+    the seen-by list of their own Instants. Rows are purged by the daily
+    cleanup together with the Instant and its `likes` rows.
 
 ### `notifications`
 
@@ -323,8 +347,8 @@ expired/used rows safely.
     IDs.
 -   Long Telegram table names were replaced with `tg` and `tg_tokens`.
 -   Current verified inventory is exactly: `users`, `follows`,
-    `requests`, `instants`, `likes`, `notifications`, `blocks`, `tg`,
-    `tg_tokens`.
+    `requests`, `instants`, `likes`, `views`, `notifications`, `blocks`,
+    `tg`, `tg_tokens`.
 -   The social model was rebuilt as mutual links on the existing
     `follows`/`requests` tables. `follows` stores one canonical row per
     pair with sorted user IDs; `users.links` is the canonical counter.
@@ -383,7 +407,30 @@ expired/used rows safely.
 -   Find Instants at least 36 hours old according to the agreed expiry
     policy.
 -   Delete Appwrite Storage image, then delete corresponding `instants`
-    row.
+    row, then cascade-purge its `likes`, `views`, and `notifications`
+    rows pointing at it.
+
+### Owner engagement archival (before the cascade)
+
+-   On archive open and manual refresh, the client snapshots the owner's
+    live Instants with full engagement via `/api/instants/mine` —
+    caption, totals, emoji breakdown, and per-viewer
+    `{ userId, seenAt, reaction }` — and merges it into the owner's local
+    IndexedDB archive record for that Instant. This is the owner's only
+    record once expiry purges the server rows.
+-   Engagement viewer ids are resolved to CURRENT public identities at
+    render time via `/api/auth/resolve-profiles` — the requester may
+    resolve their own id or any id they are currently linked with;
+    anything else resolves to a privacy blank ("Someone you don't
+    know"). Profiles are never duplicated into the IndexedDB snapshot.
+-   The archive viewer renders the reaction breakdown (emoji + count,
+    sorted) and an expandable seen-by list — works offline for the
+    snapshot itself; identity resolution degrades to blanks offline.
+
+-   Also purge already-read `notifications` on each run (unread rows are
+    never touched). The retention window is configured in
+    `src/features/cron/cleanup.ts` via `READ_NOTIFICATIONS_RETENTION_DAYS`
+    (0 = delete all read rows daily; e.g. 7 keeps a week of read history).
 -   Never delete IndexedDB copy during automatic expiry.
 -   Make job idempotent, batch-based, retry-safe.
 -   If file deletion fails, retain row/reference and retry later.

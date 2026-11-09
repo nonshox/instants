@@ -9,7 +9,8 @@ import {
 import {
   deleteInstant as deleteInstantRequest,
   fetchFeedPage,
-  setInstantLike,
+  fetchOwnEngagement,
+  setInstantReaction,
   updateInstantCaption,
   uploadInstant,
   type FeedInstant,
@@ -41,11 +42,14 @@ type InstantState = {
   initializeArchive: (accountId: string) => Promise<void>;
   initializeFeed: (accountId: string) => Promise<void>;
   refreshArchive: () => Promise<void>;
+  /** Captures engagement for own shared Instants into the local archive. */
+  syncEngagement: () => Promise<void>;
   loadFeedPage: (cursor: string | null, append: boolean) => Promise<void>;
   upload: (file: File, caption: string) => Promise<ArchivedInstant | null>;
   retryUpload: (instant: ArchivedInstant) => Promise<void>;
   updateCaption: (instant: ArchivedInstant, caption: string) => Promise<boolean>;
   toggleLike: (instant: FeedInstant, liked: boolean) => Promise<void>;
+  setReaction: (instant: FeedInstant, emoji: string | null) => Promise<void>;
   delete: (instant: ArchivedInstant) => Promise<void>;
   clearUploadMessage: () => void;
   reset: () => void;
@@ -95,6 +99,8 @@ export const useInstantStore = create<InstantState>((set, get) => ({
         ? { archiveInitialized: true, archiveInitializing: false }
         : {},
     );
+    // Capture fresh engagement in the background; the archive renders first.
+    void get().syncEngagement().catch(() => undefined);
   },
   initializeFeed: async (accountId) => {
     get().setAccountId(accountId);
@@ -112,6 +118,38 @@ export const useInstantStore = create<InstantState>((set, get) => ({
     if (!accountId) return;
     set({ archiveLoading: true, archiveError: "" });
     await loadArchive(accountId, set);
+    await get().syncEngagement();
+  },
+  syncEngagement: async () => {
+    // Snapshot own instants' engagement before the daily cleanup can
+    // purge server rows. Local-only archived photos are left untouched.
+    try {
+      const engagement = await fetchOwnEngagement();
+      const byId = new Map(engagement.map((item) => [item.id, item]));
+      const syncedAt = Date.now();
+      const changed: ArchivedInstant[] = [];
+      set((state) => ({
+        archive: state.archive.map((item) => {
+          const snapshot = item.serverId ? byId.get(item.serverId) : undefined;
+          if (!snapshot) return item;
+          const next = {
+            ...item,
+            engagement: {
+              syncedAt,
+              expiresAt: snapshot.expires,
+              likes: snapshot.likes,
+              reactions: snapshot.reactions,
+              viewers: snapshot.viewers,
+            },
+          };
+          changed.push(next);
+          return next;
+        }),
+      }));
+      await Promise.allSettled(changed.map(saveArchivedInstant));
+    } catch {
+      // Best-effort — the archive keeps its previous engagement snapshot.
+    }
   },
   loadFeedPage: async (cursor, append) =>
     loadFeed(cursor, append, set, get().accountId),
@@ -257,28 +295,34 @@ export const useInstantStore = create<InstantState>((set, get) => ({
     }
   },
   toggleLike: async (instant, liked) => {
-    // Optimistic: update the UI immediately, roll back on failure.
+    await get().setReaction(instant, liked ? "❤️" : null);
+  },
+  setReaction: async (instant, emoji) => {
+    // Optimistic: apply the delta immediately, roll back on failure.
+    const previous = instant.reaction ?? null;
+    const delta =
+      previous === emoji ? 0 : emoji === null ? -1 : previous === null ? 1 : 0;
     set((state) => ({
       pendingLikes: new Set(state.pendingLikes).add(instant.id),
       feed: state.feed.map((item) =>
         item.id === instant.id
           ? {
               ...item,
-              likedByViewer: liked,
-              likes: Math.max(0, item.likes + (liked ? 1 : -1)),
+              reaction: emoji,
+              likes: Math.max(0, item.likes + delta),
             }
           : item,
       ),
     }));
     try {
-      const result = await setInstantLike(instant.id, liked);
+      const result = await setInstantReaction(instant.id, emoji);
       set((state) => ({
         feed: state.feed.map((item) =>
           item.id === instant.id
             ? {
                 ...item,
-                likedByViewer: result.liked,
-                likes: result.likes,
+                reaction: result.reaction,
+                likes: result.reactions,
               }
             : item,
         ),
@@ -290,7 +334,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
         ),
         feedError: getApiErrorMessage(
           cause,
-          "The like could not be updated.",
+          "The reaction could not be updated.",
         ),
       }));
     } finally {

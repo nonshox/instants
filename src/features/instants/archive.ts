@@ -1,5 +1,26 @@
 export type ArchiveSyncState = "local" | "uploading" | "uploaded" | "failed";
 
+export type ArchivedEngagementViewer = {
+  userId: string;
+  seenAt: string;
+  reaction: string | null;
+};
+
+/**
+ * Snapshot of everything engagement-related about a shared Instant: total
+ * reactions, the emoji breakdown, and who saw it (with their reaction).
+ * Captured locally while the Instant is alive on the server — it is the
+ * owner's only record once the daily cleanup purges the server rows.
+ * Viewer ids are resolved to CURRENT identities at render time.
+ */
+export type ArchivedInstantEngagement = {
+  syncedAt: number;
+  expiresAt: string;
+  likes: number;
+  reactions: Record<string, number>;
+  viewers: ArchivedEngagementViewer[];
+};
+
 export type ArchivedInstant = {
   localId: string;
   ownerId: string;
@@ -11,6 +32,7 @@ export type ArchivedInstant = {
   likes: number;
   serverId: string | null;
   syncState: ArchiveSyncState;
+  engagement?: ArchivedInstantEngagement;
 };
 
 const databaseName = "instant-local-archive";

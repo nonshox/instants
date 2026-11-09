@@ -35,6 +35,7 @@ export type UpdatedInstantCaption = {
 export class InstantNotFoundError extends Error {
   constructor() {
     super("Instant is unavailable.");
+    this.name = "InstantNotFoundError";
   }
 }
 
@@ -266,12 +267,14 @@ function toCreatedInstant(row: InstantRow): CreatedInstant {
 export class UnsupportedInstantImageError extends Error {
   constructor(message: string) {
     super(message);
+    this.name = "UnsupportedInstantImageError";
   }
 }
 
 export class InstantConflictError extends Error {
   constructor() {
     super("This Instant identifier is already in use.");
+    this.name = "InstantConflictError";
   }
 }
 

@@ -3,15 +3,47 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  Check,
+  Heart,
+  RefreshCw,
+  UsersRound,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
+import { recordInstantView } from "@/src/features/instants/client-api";
 import { useInstantStore } from "@/src/features/instants/store";
-import { formatInstantDate } from "@/src/features/instants/format-date";
+import { formatRelativeTime } from "@/src/features/instants/format-date";
+import type { FeedInstant } from "@/src/features/instants/client-api";
 import { UserAvatar } from "@/app/components/user-avatar";
-import { InstantViewer } from "@/app/components/instant-viewer";
-import { FeedSkeleton } from "@/app/components/skeletons";
+
+const VISIBLE_CARDS = 3;
+const DRAG_FLY_OFFSET = 120;
+const DRAG_FLY_VELOCITY = 600;
+
+// The row is 3 ordered main reactions + 2 "random" picks drawn from the
+// positive pool. The picks are seeded by account + UTC day: stable for
+// hydration, unique per viewer, and reshuffled daily.
+const MAIN_REACTIONS = ["❤️", "🔥", "😍"] as const;
+const RANDOM_POOL = ["👏", "🙌", "🤩", "😄", "🎉", "💪", "🥹", "✨"];
+
+function hashString(input: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function pickTwoRandom(seed: number): [string, string] {
+  const pool = [...RANDOM_POOL];
+  const first = pool.splice(seed % pool.length, 1)[0];
+  const second = pool.splice(Math.floor(seed / pool.length) % pool.length, 1)[0];
+  return [first, second];
+}
 
 export function LinksFeedExperience({
   accountId,
@@ -28,222 +60,489 @@ export function LinksFeedExperience({
 
   const initializeFeed = useInstantStore((state) => state.initializeFeed);
   const loadFeedPage = useInstantStore((state) => state.loadFeedPage);
-  const updateLike = useInstantStore((state) => state.toggleLike);
+  const updateLike = useInstantStore((state) => state.setReaction);
 
-  const [doubleTapInstant, setDoubleTapInstant] = useState<string | null>(
-    null,
+  // How many cards have been dealt past the front of the deck.
+  const [dismissedCount, setDismissedCount] = useState(0);
+  // Direction the top card flies off in, consumed by the exit animation.
+  const [exitDirection, setExitDirection] = useState(1);
+  // Cards mid-flight after being dealt away. They must not intercept
+  // taps/focus while AnimatePresence is animating them out.
+  const [exitingIds, setExitingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
   );
-  const [openInstantId, setOpenInstantId] = useState<string | null>(null);
-  const clickTimer = useRef<number | null>(null);
+  const [likeBurst, setLikeBurst] = useState(0);
+  const burstTimer = useRef<number | null>(null);
+  const dealDirection = useRef(1);
 
   useEffect(() => {
     void initializeFeed(accountId);
   }, [accountId, initializeFeed]);
 
-  async function handleDoubleTap(
-    instant: (typeof feed)[number],
-  ) {
-    if (clickTimer.current) {
-      window.clearTimeout(clickTimer.current);
-      clickTimer.current = null;
-    }
-    setDoubleTapInstant(instant.id);
-    window.setTimeout(() => setDoubleTapInstant(null), 650);
+  // Deterministic per viewer — hydration-safe and stable across reloads.
+  const randomPicks = pickTwoRandom(hashString(accountId));
 
-    if (!instant.likedByViewer && !pendingLikes.has(instant.id)) {
-      await updateLike(instant, true);
-    }
-  }
+  useEffect(
+    () => () => {
+      if (burstTimer.current) window.clearTimeout(burstTimer.current);
+    },
+    [],
+  );
 
-  function handlePhotoClick(instant: (typeof feed)[number]) {
-    if (clickTimer.current) {
-      window.clearTimeout(clickTimer.current);
-    }
-    clickTimer.current = window.setTimeout(() => {
-      clickTimer.current = null;
-      setOpenInstantId(instant.id);
-    }, 280);
-  }
+  const total = feed.length;
+  const topIndex = Math.min(dismissedCount, total);
+  const topInstant = topIndex < total ? feed[topIndex] : null;
+  const visible = feed.slice(topIndex, topIndex + VISIBLE_CARDS);
 
-  const viewerInstant = openInstantId
-    ? feed.find((item) => item.id === openInstantId) ?? null
-    : null;
+  const peekNextDirection = () => {
+    dealDirection.current = -dealDirection.current || 1;
+    return dealDirection.current;
+  };
+
+  const dismissTop = useCallback(
+    (direction: number) => {
+      const current = topIndex < total ? feed[topIndex] : null;
+      if (!current) return;
+      // Mark as seen — dealt Instants leave the feed for good.
+      void recordInstantView(current.id).catch(() => {
+        // A missed view marker only means it may reappear on next visit.
+      });
+      setExitDirection(direction);
+      setExitingIds((ids) => new Set(ids).add(current.id));
+      setDismissedCount((count) => count + 1);
+      // Prefetch the next page when one card from the end is left.
+      if (topIndex + 1 >= total - 1 && hasMore && !loadingMore) {
+        void loadFeedPage(nextCursor, true);
+      }
+    },
+    [feed, hasMore, loadFeedPage, loadingMore, nextCursor, topIndex, total],
+  );
+
+  const reactTo = useCallback(
+    (emoji: string) => {
+      if (!topInstant || pendingLikes.has(topInstant.id)) return;
+      const next = topInstant.reaction === emoji ? null : emoji;
+      // A reaction deals the photo away — the image disappears for good.
+      if (next !== null) {
+        setLikeBurst((count) => count + 1);
+        if (burstTimer.current) window.clearTimeout(burstTimer.current);
+        burstTimer.current = window.setTimeout(() => setLikeBurst(0), 700);
+      }
+      void updateLike(topInstant, next);
+      dismissTop(peekNextDirection());
+    },
+    [pendingLikes, topInstant, updateLike, dismissTop],
+  );
+
+  // Keyboard: → deals the next image. There is no way back to a seen Instant.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (event.key === "ArrowRight" && topInstant) {
+        event.preventDefault();
+        dismissTop(peekNextDirection());
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+     
+  }, [dismissTop, topInstant]);
+
+  const deckExhausted = total > 0 && topIndex >= total;
+  const chosenReaction = topInstant ? topInstant.reaction : null;
+  const mainReactions = MAIN_REACTIONS;
 
   return (
-    <section className="mx-auto w-full max-w-[350px]">
+    <section
+      aria-label="Instants feed"
+      className="mx-auto flex h-[calc(100dvh-146px)] min-h-[400px] w-full max-w-[560px] select-none flex-col overflow-hidden md:h-[calc(100dvh-130px)]"
+    >
       {error && (
         <div
-          className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-3"
+          className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/[0.04] px-3 py-2"
           role="alert"
         >
-          <p className="text-sm text-destructive">{error}</p>
-          <Button
+          <p className="min-w-0 flex-1 text-xs text-destructive">{error}</p>
+          <button
             aria-label="Retry loading feed"
+            className="grid size-7 shrink-0 place-items-center rounded-full text-destructive outline-none transition hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             disabled={loading}
             onClick={() => void loadFeedPage(null, false)}
-            size="icon"
             type="button"
-            variant="ghost"
           >
-            <RefreshCw aria-hidden="true" size={16} />
-          </Button>
+            <RefreshCw aria-hidden="true" size={14} />
+          </button>
         </div>
       )}
 
-      {loading && feed.length === 0 ? (
-        <FeedSkeleton />
-      ) : feed.length === 0 ? (
-        <div className="flex flex-col items-center px-6 py-20 text-center">
-          <div className="mb-5 grid size-14 place-items-center rounded-full border border-border">
-            <Heart className="text-muted-foreground" size={23} />
-          </div>
-          <p className="text-sm font-medium">Your feed is quiet.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Link with people to see their Instants here.
-          </p>
-          <Button
-            className="mt-5 rounded-full"
-            nativeButton={false}
-            render={<Link href="/connections" />}
-            size="sm"
-            variant="outline"
-          >
-            Find people
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-8 sm:space-y-10">
-          {feed.map((instant) => {
-            const liked = instant.likedByViewer;
-            const isPending = pendingLikes.has(instant.id);
-
-            return (
-              <article
-                className="min-w-0"
-                key={instant.id}
-              >
-                {/* Account */}
-                <header className="mb-3 flex items-center gap-3 px-1">
-                  <UserAvatar
-                    avatar={instant.avatar}
-                    size={36}
-                    userId={instant.ownerId}
-                    username={instant.username}
-                  />
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">
-                      @{instant.username}
-                    </p>
-                    <time
-                      className="mt-0.5 block text-xs text-muted-foreground"
-                      dateTime={instant.createdAt}
-                    >
-                      {formatInstantDate(instant.createdAt)}
-                    </time>
-                  </div>
-                </header>
-
-                {/* Instant image */}
-                <button
-                  aria-label={`Open Instant by @${instant.username}`}
-                  className="group relative isolate block aspect-square w-full cursor-pointer select-none overflow-hidden rounded-[2rem] bg-muted shadow-[0_14px_40px_-12px_rgba(0,0,0,0.28)] outline-none ring-1 ring-border/70 transition focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => handlePhotoClick(instant)}
-                  onDoubleClick={() => void handleDoubleTap(instant)}
-                  type="button"
-                >
-                  <Image
-                    alt={`Instant shared by @${instant.username}`}
-                    className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                    fill
-                    sizes="(max-width: 400px) 100vw, 350px"
-                    src={instant.imageUrl}
-                    unoptimized
-                  />
-
-                  {doubleTapInstant === instant.id && (
-                    <div
-                      className="pointer-events-none absolute inset-0 grid place-items-center"
-                      aria-hidden="true"
-                    >
-                      <Heart
-                        className="animate-in zoom-in-50 fill-white text-white drop-shadow-xl duration-300"
-                        size={76}
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                  )}
-                </button>
-
-                {/* Actions */}
-                <div className="flex items-center gap-3 px-1 pt-3">
-                  <button
-                    aria-label={liked ? "Unlike Instant" : "Like Instant"}
-                    aria-pressed={liked}
-                    className={`inline-flex size-9 items-center justify-center rounded-full transition active:scale-90 disabled:opacity-50 ${
-                      liked
-                        ? "text-rose-500"
-                        : "text-foreground hover:text-rose-500"
-                    }`}
-                    disabled={isPending}
-                    onClick={() => void updateLike(instant, !liked)}
-                    type="button"
-                  >
-                    <Heart
-                      fill={liked ? "currentColor" : "none"}
-                      size={23}
-                      strokeWidth={1.8}
+      {/* Stage */}
+      <div
+        aria-label="Photo deck"
+        className="relative mt-2 min-h-0 flex-1 [container-type:size]"
+      >
+        {loading && total === 0 ? (
+          <DeckSkeleton />
+        ) : total === 0 ? (
+          <QuietFeed />
+        ) : deckExhausted ? (
+          <DeckComplete
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={() => void loadFeedPage(nextCursor, true)}
+          />
+        ) : (
+          <>
+            <AnimatePresence initial={false}>
+              {visible
+                .slice()
+                .reverse()
+                .map((instant, reversedIndex) => {
+                  const position = visible.length - 1 - reversedIndex; // 0 = front
+                  return (
+                    <DeckCard
+                      exitDirection={exitDirection}
+                      exiting={exitingIds.has(instant.id)}
+                      instant={instant}
+                      key={instant.id}
+                      onDismiss={dismissTop}
+                      position={position}
+                      topIndex={topIndex}
+                      total={total}
                     />
-                  </button>
+                  );
+                })}
+            </AnimatePresence>
 
-                  <span className="text-sm font-semibold tabular-nums">
-                    {instant.likes.toLocaleString()}
-                    <span className="ml-1 font-normal text-muted-foreground">
-                      {instant.likes === 1 ? "like" : "likes"}
-                    </span>
-                  </span>
-                </div>
+            {/* Like burst */}
+            {likeBurst > 0 && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-30 grid place-items-center"
+                key={likeBurst}
+              >
+                <Heart
+                  className="animate-in zoom-in-50 fill-white text-white drop-shadow-[0_2px_16px_rgba(0,0,0,0.45)] duration-300"
+                  size={72}
+                  strokeWidth={1.4}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
-                {/* Caption */}
-                {instant.caption && (
-                  <p className="mt-1 px-1 text-sm leading-relaxed">
-                    <span className="mr-1.5 font-semibold">
-                      @{instant.username}
-                    </span>
-                    <span className="whitespace-pre-wrap">
-                      {instant.caption}
-                    </span>
-                  </p>
-                )}
-              </article>
-            );
-          })}
+      {/* Details below the image */}
+      {topInstant && !loading && (
+        <div className="flex shrink-0 flex-col items-center gap-1 pb-1.5 pt-1">
+          {topInstant.caption && (
+            <p
+              className="max-w-[46ch] truncate px-4 text-center text-[11px] text-muted-foreground"
+              title={topInstant.caption}
+            >
+              {topInstant.caption}
+            </p>
+          )}
+          <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+            <UserAvatar
+              avatar={topInstant.avatar}
+              size={22}
+              userId={topInstant.ownerId}
+              username={topInstant.username}
+            />
+            <span className="font-semibold">@{topInstant.username}</span>
+            <span aria-hidden="true" className="text-muted-foreground">
+              ·
+            </span>
+            <time
+              className="text-[11px] font-medium text-muted-foreground"
+              dateTime={topInstant.createdAt}
+            >
+              {formatRelativeTime(topInstant.createdAt)}
+            </time>
+            <span aria-hidden="true" className="text-muted-foreground">
+              ·
+            </span>
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              {Math.min(topIndex + 1, total)}/{total}
+            </span>
+          </div>
+
+          {/* Reactions — line 1: ordered main trio, line 2: 2 random picks */}
+          <div className="mt-0.5 flex flex-col items-center gap-1.5">
+            <div
+              aria-label="React to this photo"
+              className="flex items-center gap-2"
+              role="group"
+            >
+              {mainReactions.map((emoji) => (
+                <ReactionButton
+                  disabled={pendingLikes.has(topInstant.id)}
+                  emoji={emoji}
+                  key={emoji}
+                  likeCount={emoji === "❤️" ? topInstant.likes : undefined}
+                  onPress={reactTo}
+                  selected={chosenReaction === emoji}
+                />
+              ))}
+            </div>
+            <div
+              aria-label="More reactions"
+              className="flex items-center gap-2"
+              role="group"
+            >
+              {randomPicks.map((emoji) => (
+                <ReactionButton
+                  disabled={pendingLikes.has(topInstant.id)}
+                  emoji={emoji}
+                  key={emoji}
+                  onPress={reactTo}
+                  selected={chosenReaction === emoji}
+                />
+              ))}
+            </div>
+          </div>
         </div>
-      )}
-
-      {hasMore && feed.length > 0 && (
-        <div className="flex justify-center py-10">
-          <Button
-            className="min-w-36 rounded-full"
-            disabled={loadingMore}
-            onClick={() => void loadFeedPage(nextCursor, true)}
-            type="button"
-            variant="outline"
-          >
-            {loadingMore ? "Loading..." : "Load more"}
-          </Button>
-        </div>
-      )}
-
-      {viewerInstant && (
-        <InstantViewer
-          instant={viewerInstant}
-          mode="feed"
-          onClose={() => setOpenInstantId(null)}
-          onToggleLike={(target, liked) => void updateLike(target, liked)}
-          pendingLike={pendingLikes.has(viewerInstant.id)}
-        />
       )}
     </section>
+  );
+}
+
+function ReactionButton({
+  disabled,
+  emoji,
+  likeCount,
+  onPress,
+  selected,
+}: {
+  disabled: boolean;
+  emoji: string;
+  likeCount?: number;
+  onPress: (emoji: string) => void;
+  selected: boolean;
+}) {
+  const isHeart = emoji === "❤️";
+  const label = isHeart
+    ? selected
+      ? `Unlike, ${likeCount?.toLocaleString()} likes`
+      : `Like, ${likeCount?.toLocaleString()} likes`
+    : selected
+      ? `Remove your ${emoji} reaction`
+      : `React with ${emoji}`;
+
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={selected}
+      className={`flex h-11 w-11 items-center justify-center rounded-full border text-xl outline-none transition active:scale-90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 ${
+        selected
+          ? "border-rose-300 bg-rose-50 shadow-[0_2px_12px_rgba(244,63,94,0.25)] ring-1 ring-rose-300 dark:border-rose-500/40 dark:bg-rose-500/15"
+          : "border-border/70 bg-background hover:border-rose-200 hover:bg-rose-50/60 dark:hover:border-rose-500/30 dark:hover:bg-rose-500/10"
+      }`}
+      disabled={disabled}
+      onClick={() => onPress(emoji)}
+      type="button"
+    >
+      <span aria-hidden="true">{emoji}</span>
+    </button>
+  );
+}
+
+function DeckCard({
+  exitDirection,
+  exiting,
+  instant,
+  onDismiss,
+  position,
+  topIndex,
+  total,
+}: {
+  exitDirection: number;
+  exiting: boolean;
+  instant: FeedInstant;
+  onDismiss: (direction: number) => void;
+  position: number;
+  topIndex: number;
+  total: number;
+}) {
+  const isTop = position === 0 && !exiting;
+  const reduceMotion = useReducedMotion();
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <motion.div
+      animate={{
+        scale: 1 - position * 0.06,
+        y: position * -14,
+        rotate: position === 0 ? 0 : position % 2 === 1 ? -2.5 : 2.5,
+        opacity: 1,
+      }}
+      aria-hidden={!isTop}
+      className="absolute inset-0 grid place-items-center"
+      drag={isTop ? "x" : false}
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={1}
+      dragMomentum={false}
+      exit={{
+        opacity: 0,
+        rotate: exitDirection * 18,
+        transition: { duration: 0.28, ease: "easeOut" },
+        x: exitDirection * 620,
+      }}
+      initial={false}
+      onDragEnd={(_event, info) => {
+        const flies =
+          Math.abs(info.offset.x) > DRAG_FLY_OFFSET ||
+          Math.abs(info.velocity.x) > DRAG_FLY_VELOCITY;
+        if (flies) onDismiss(info.offset.x >= 0 ? 1 : -1);
+      }}
+      onTap={(_event, info) => {
+        if (!isTop) return;
+        const rect = cardRef.current?.getBoundingClientRect();
+        const middle = rect ? rect.left + rect.width / 2 : 0;
+        onDismiss(info.point.x < middle ? -1 : 1);
+      }}
+      style={{
+        zIndex: 20 - position,
+        touchAction: "pan-y",
+        pointerEvents: exiting ? "none" : "auto",
+      }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { damping: 30, stiffness: 320, type: "spring" }
+      }
+      whileDrag={{ scale: 1.03 }}
+    >
+      <div
+        ref={cardRef}
+        aria-label={
+          isTop
+            ? `Photo by @${instant.username}, ${topIndex + 1} of ${total}. Activate for next image.`
+            : undefined
+        }
+        className={`relative size-[78cqmin] overflow-hidden rounded-[2rem] bg-muted shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] ring-1 ring-border/70 ${
+          isTop ? "cursor-pointer" : ""
+        }`}
+        onKeyDown={
+          isTop
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onDismiss(1);
+                }
+              }
+            : undefined
+        }
+        role={isTop ? "button" : undefined}
+        tabIndex={isTop ? 0 : undefined}
+      >
+        <Image
+          alt={`Instant shared by @${instant.username}`}
+          className="pointer-events-none object-cover"
+          draggable={false}
+          fill
+          loading={isTop ? "eager" : "lazy"}
+          preload={isTop}
+          sizes="(max-width: 640px) 70vw, 300px"
+          src={instant.imageUrl}
+          unoptimized
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+function DeckSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      aria-label="Loading feed"
+      className="absolute inset-0 grid place-items-center"
+    >
+      <div className="size-[78cqmin] animate-pulse rounded-[2rem] bg-muted ring-1 ring-border/70" />
+    </div>
+  );
+}
+
+function QuietFeed() {
+  return (
+    <div className="grid h-full place-items-center px-6 text-center">
+      <div className="flex flex-col items-center">
+        <div className="mb-5 grid size-14 place-items-center rounded-full border border-border">
+          <Heart
+            aria-hidden="true"
+            className="text-muted-foreground"
+            size={23}
+          />
+        </div>
+        <p className="text-sm font-medium">Your feed is quiet.</p>
+        <p className="mt-1 max-w-56 text-sm text-muted-foreground">
+          Link with people to see their Instants here.
+        </p>
+        <Button
+          className="mt-5 rounded-full"
+          nativeButton={false}
+          render={<Link href="/connections" />}
+          size="sm"
+          variant="outline"
+        >
+          <UsersRound aria-hidden="true" className="size-4" />
+          Find people
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DeckComplete({
+  hasMore,
+  loadingMore,
+  onLoadMore,
+}: {
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
+}) {
+  return (
+    <div className="grid h-full place-items-center px-6 text-center">
+      <div className="flex flex-col items-center">
+        <div className="mb-5 grid size-14 place-items-center rounded-full border border-emerald-500/30 bg-emerald-500/10">
+          <Check
+            aria-hidden="true"
+            className="text-emerald-600"
+            size={24}
+          />
+        </div>
+        <p className="text-sm font-semibold">You&apos;re all caught up</p>
+        <p className="mt-1 max-w-56 text-sm text-muted-foreground">
+          You&apos;ve seen every Instant from your links.
+        </p>
+        <div className="mt-5 flex items-center gap-2">
+          {hasMore ? (
+            <Button
+              className="rounded-full"
+              disabled={loadingMore}
+              onClick={onLoadMore}
+              size="sm"
+              type="button"
+            >
+              {loadingMore ? "Loading..." : "Load more"}
+            </Button>
+          ) : (
+            <Button
+              className="rounded-full"
+              nativeButton={false}
+              render={<Link href="/connections" />}
+              size="sm"
+              variant="outline"
+            >
+              <UsersRound aria-hidden="true" className="size-4" />
+              Find people
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

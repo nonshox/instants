@@ -64,11 +64,13 @@ export async function optimizeImage(input: Buffer): Promise<OptimizedImage> {
 export class InvalidInstantImageError extends Error {
   constructor() {
     super("That photo can't be used. Try another one.");
+    this.name = "InvalidInstantImageError";
   }
 }
 
 export class UnsupportedImageError extends Error {
   constructor() {
     super("That photo can't be used. Try another one.");
+    this.name = "UnsupportedImageError";
   }
 }
