@@ -5,12 +5,14 @@ import Link from "next/link";
 import {
   Camera,
   Check,
+  Eye,
   FlipHorizontal2,
   ImagePlus,
   LoaderCircle,
   RefreshCw,
   X,
 } from "lucide-react";
+import { fetchProfile, type Profile } from "@/src/features/profile/client-api";
 import {
   useCallback,
   useEffect,
@@ -36,6 +38,7 @@ const CAPTION_MAX = 60;
 
 export function InstantComposer() {
   const uploading = useInstantStore((state) => state.uploading);
+  const uploadProgress = useInstantStore((state) => state.uploadProgress);
   const archiveError = useInstantStore((state) => state.archiveError);
   const uploadMessage = useInstantStore((state) => state.uploadMessage);
   const shareInstant = useInstantStore((state) => state.upload);
@@ -65,6 +68,22 @@ export function InstantComposer() {
     null,
   );
   const [retrying, setRetrying] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [previewAsFriend, setPreviewAsFriend] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchProfile()
+      .then((data) => {
+        if (active) setProfile(data);
+      })
+      .catch(() => {
+        // Preview falls back to initials when profile is unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -593,7 +612,38 @@ export function InstantComposer() {
               >
                 <X aria-hidden="true" className="size-5" />
               </button>
-              <div className="absolute inset-x-4 bottom-4 z-10 flex items-center justify-between">
+              <button
+                aria-label={previewAsFriend ? "Exit preview" : "Preview as your followers will see it"}
+                aria-pressed={previewAsFriend}
+                className="absolute left-4 top-4 z-10 grid size-10 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white"
+                onClick={() => setPreviewAsFriend((value) => !value)}
+                type="button"
+              >
+                <Eye aria-hidden="true" className="size-5" />
+              </button>
+              {previewAsFriend && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex flex-col items-center gap-1.5 text-center"
+                >
+                  <span className="font-semibold text-sm text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]">
+                    @{profile?.username ?? "you"}
+                  </span>
+                  {caption && (
+                    <span className="max-w-[80%] truncate text-[11px] text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]">
+                      {caption}
+                    </span>
+                  )}
+                  <span className="mt-1 text-base drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]">
+                    ❤️ 🔥 😍 👏 🙌
+                  </span>
+                </div>
+              )}
+              <div
+                className={`absolute inset-x-4 bottom-4 z-10 flex items-center justify-between ${
+                  previewAsFriend ? "opacity-0" : ""
+                }`}
+              >
                 <button
                   aria-label="Choose a different photo"
                   className="grid size-11 place-items-center rounded-full bg-black/40 text-white outline-none backdrop-blur-sm transition hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50"
@@ -706,12 +756,23 @@ export function InstantComposer() {
               className="absolute inset-0 z-20 grid place-items-center bg-background/75 backdrop-blur-[2px]"
               role="status"
             >
-              <div className="grid justify-items-center gap-2 text-center">
+              <div className="grid w-full max-w-[240px] justify-items-center gap-2 text-center">
                 <LoaderCircle
                   aria-hidden="true"
                   className="size-6 animate-spin"
                 />
-                <p className="text-sm font-medium">Sharing...</p>
+                <p className="text-sm font-medium">
+                  Sharing... {uploadProgress > 0 ? `${uploadProgress}%` : ""}
+                </p>
+                <div
+                  aria-hidden="true"
+                  className="h-1.5 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/15"
+                >
+                  <div
+                    className="h-full rounded-full bg-foreground transition-[width] duration-150 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
               </div>
             </div>
           )}

@@ -15,6 +15,8 @@ export type NotificationItem = {
   instantId: string | null;
   createdAt: string;
   read: boolean;
+  count: number;
+  ids: string[];
 };
 
 export type NotificationPage = {

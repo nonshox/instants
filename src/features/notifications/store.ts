@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import {
   fetchNotifications,
-  markNotificationRead,
   markNotificationsRead,
   type NotificationItem,
 } from "./client-api";
@@ -70,17 +69,24 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set({ loadingMore: true, error: "" });
     try {
       const data = await fetchNotifications(cursor);
-      set((state) => ({
-        items: [
+      set((state) => {
+        const merged = [
           ...state.items,
           ...data.items.filter(
             (item) => !state.items.some((existing) => existing.id === item.id),
           ),
-        ],
-        cursor: data.nextCursor,
-        unreadCount: data.unreadCount,
-        loadingMore: false,
-      }));
+        ];
+        return {
+          items: merged,
+          cursor: data.nextCursor,
+          // Sum across every page we've loaded, not just the latest one.
+          unreadCount: merged.reduce(
+            (sum, item) => sum + (item.read ? 0 : item.count),
+            0,
+          ),
+          loadingMore: false,
+        };
+      });
     } catch (cause) {
       set({
         error: getApiErrorMessage(
@@ -93,17 +99,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
   markRead: async (item) => {
     if (item.read || get().pendingIds.has(item.id)) return;
+    const ids = item.ids ?? [item.id];
     set((state) => ({
-      pendingIds: new Set(state.pendingIds).add(item.id),
+      pendingIds: new Set([...state.pendingIds, ...ids]),
       error: "",
     }));
     try {
-      await markNotificationRead(item.id);
+      await markNotificationsRead(ids);
       set((state) => ({
         items: state.items.map((entry) =>
           entry.id === item.id ? { ...entry, read: true } : entry,
         ),
-        unreadCount: Math.max(0, state.unreadCount - 1),
+        unreadCount: Math.max(0, state.unreadCount - item.count),
       }));
     } catch (cause) {
       set({
@@ -115,15 +122,19 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     } finally {
       set((state) => {
         const pendingIds = new Set(state.pendingIds);
-        pendingIds.delete(item.id);
+        for (const id of ids) pendingIds.delete(id);
         return { pendingIds };
       });
     }
   },
   markAllRead: async () => {
-    const unreadIds = get()
-      .items.filter((item) => !item.read)
-      .map((item) => item.id);
+    const unreadIds = [
+      ...new Set(
+        get()
+          .items.filter((item) => !item.read)
+          .flatMap((item) => item.ids ?? [item.id]),
+      ),
+    ];
     if (unreadIds.length === 0) return;
     set({ pendingIds: new Set(unreadIds), error: "" });
     try {

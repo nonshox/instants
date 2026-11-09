@@ -287,6 +287,10 @@ maintained only by trusted server-side operations.
     `instants.likes` / `users.likes` remain the total reaction counters. Allowed values: `❤️ 🔥 😍 👏 🙌 🤩 😄 🎉 💪 🥹 ✨`
     (positive reactions only). Appwrite refused a default on a required
     column, so requiredness is enforced at the application layer.
+-   Per-viewer mute state (`mono.muted`) and seen Instant ids
+    (`mono.seen`) are deliberately kept in **localStorage** on the device
+    that created them, not in Appwrite tables. Promoting them requires a
+    table proposal — `views` is the only new table that has been approved.
 
 ### `views`
 
@@ -312,6 +316,14 @@ to it. Powers feed seen-filtering and the owner's seen-by list.
     composite(`recipient`,`read`). Application types are
     `link_request`, `link_accepted`, and `like`; legacy
     `follow_request`, `follow_approved`, and `new_follower` rows remain
+    renderable. The only `like` row created today is a reaction ping
+    (any emoji, not only ❤️); reaction semantics stay: one reaction per
+    viewer per Instant (switching emoji rewrites the same row).
+-   **Reaction pings are digest-gated to one per Instant per 24h** per
+    viewer — after the first reaction of that window the in-app
+    notification and the Telegram ping are both suppressed. Switched
+    reactions (same viewer, different emoji on an existing row) never
+    generate a notification.
     renderable.
 
 ### `blocks`

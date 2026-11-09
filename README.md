@@ -25,8 +25,11 @@ The current application foundation includes:
   notifications.
 - Paginated notification inbox, read state, and filtering of blocked users.
 - Typed per-viewer reactions (emoji persisted per Instant), seen-aware
-  feed filtering (dealt or reacted Instants leave your feed), and an
-  owner-facing seen-by list on own Instants. Owner engagement
+  feed filtering (dealt or reacted Instants leave your feed), per-device
+  "Mute this person" in the identity row, an unseen-count badge on the
+  Feed tab, an owner-facing seen-by list on own Instants with live
+  refresh, and a daily digest gate: at most one reaction ping per Instant
+  per 24h per viewer (subsequent reactions silent). Owner engagement
   (reactions, viewers) is snapshotted into the local IndexedDB archive,
   with ids resolved to current identities at render time (linked
   accounts only); identities never leave the server with cached names.
@@ -49,9 +52,30 @@ The current application foundation includes:
   validates the Appwrite session before rendering protected pages. API
   handlers continue to validate the session and authorize each operation.
 
-The app is not production-ready: Appwrite email delivery, session
-behavior, social, Storage, transactions, Telegram webhook setup, and
-Vercel Cron operation still need live end-to-end verification.
+**Verified against a live Appwrite as of Nov 2026** — the full workspace
+checks pass via `node scripts/preflight.mjs`. Telegram delivery and Vercel
+Cron behaviour are wired in code but have not been personally signed in on
+a real device yet. If anything feels off, run preflight first.
+
+## Pre-deploy checklist
+
+Run this **before every deploy** — the same checks your codebase needs in order to work:
+
+```bash
+node scripts/preflight.mjs
+```
+
+It verifies (read-only, safe):
+- `APPWRITE_API_KEY` authenticates against the real backend
+- `likes.emoji` column exists (the reaction migration ran)
+- `views` table exists (the seen-by migration ran)
+- `notifications` table reachable
+
+Any `FAIL` output means the deploy would trade you for outage messages, not user happiness: **don't deploy.**
+
+To make sure a brand-new instance has run the migrations, the preflight will tell you exactly which script to run.
+
+## Local development
 
 ## Local development
 

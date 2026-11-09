@@ -21,6 +21,7 @@ import { useNotificationStore } from "@/src/features/notifications/store";
 import { getApiErrorMessage } from "@/src/lib/api-client";
 import { UserAvatar } from "@/app/components/user-avatar";
 import { MobileNav } from "@/app/components/mobile-nav";
+import { useUnseenCount } from "@/src/features/instants/seen";
 
 const menuItems = [
   { label: "Profile", href: "/profile", icon: UserRound },
@@ -52,6 +53,8 @@ export function WorkspaceShell({
   const [profile, setProfile] = useState<Profile | null>(null);
   const unreadCount = useNotificationStore((state) => state.unreadCount);
   const loadNotifications = useNotificationStore((state) => state.load);
+  const feed = useInstantStore((state) => state.feed);
+  const unseenFeed = useUnseenCount(feed);
 
   useEffect(() => {
     void loadNotifications();
@@ -135,7 +138,7 @@ export function WorkspaceShell({
               return (
                 <Link
                   aria-current={isCurrent ? "page" : undefined}
-                  className={`rounded-full px-4 py-1.5 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-ring ${
+                  className={`relative rounded-full px-4 py-1.5 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-ring ${
                     isCurrent
                       ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
                       : "text-muted-foreground hover:text-foreground"
@@ -145,6 +148,14 @@ export function WorkspaceShell({
                   prefetch={true}
                 >
                   {item.label}
+                  {item.href === "/" && unseenFeed > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 align-middle text-[9px] font-semibold tabular-nums leading-none text-white"
+                    >
+                      {unseenFeed > 99 ? "99+" : unseenFeed}
+                    </span>
+                  )}
                 </Link>
               );
             })}

@@ -32,6 +32,7 @@ export async function uploadInstant(
   image: Blob,
   mimeType: string,
   caption: string,
+  onProgress?: (percent: number) => void,
 ): Promise<string> {
   const form = new FormData();
   form.append("localId", localId);
@@ -40,6 +41,12 @@ export async function uploadInstant(
   const { data } = await apiClient.post<{ instant: { id: string } }>(
     "/instants",
     form,
+    {
+      onUploadProgress: (event) => {
+        if (!onProgress || !event.total) return;
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      },
+    },
   );
   return data.instant.id;
 }

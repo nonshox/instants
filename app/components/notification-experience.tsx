@@ -17,6 +17,13 @@ const descriptions: Record<NotificationItem["type"], string> = {
   like: "liked your Instant",
 };
 
+function describeItem(item: NotificationItem): string {
+  if (item.type === "like" && item.count > 1) {
+    return `reacted to ${item.count} of your Instants`;
+  }
+  return descriptions[item.type];
+}
+
 const filters = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
@@ -250,7 +257,7 @@ function NotificationRow({
           >
             @{item.actorUsername}
           </Link>{" "}
-          <span className="text-foreground/85">{descriptions[item.type]}</span>
+          <span className="text-foreground/85">{describeItem(item)}</span>
         </p>
         <time
           className="mt-0.5 block text-[10px] font-medium text-muted-foreground"

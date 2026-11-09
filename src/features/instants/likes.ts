@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import { ID, Query, type Models } from "node-appwrite";
+import { AppwriteException, ID, Query, type Models } from "node-appwrite";
 import { findLink, runTransaction } from "@/src/features/social/data";
 import { canViewInstant } from "./policy";
 import {
@@ -22,6 +22,14 @@ type LikeRow = Models.Row & {
   instant: string;
   user: string;
   emoji?: string | null;
+};
+
+type NotificationRowLite = Models.Row & {
+  recipient: string;
+  actor: string;
+  type: string;
+  instant?: string;
+  read: boolean;
 };
 
 export type ReactionResult = {
@@ -88,6 +96,9 @@ async function addReaction(
   viewerId: string,
   emoji: string,
 ): Promise<ReactionResult> {
+  const notifyOwner =
+    instant.user !== viewerId &&
+    (await shouldNotifyReaction(instant.user, instant.$id));
   try {
     await runTransaction(async (transactionId) => {
       const tables = getTables();
@@ -117,7 +128,7 @@ async function addReaction(
           transactionId,
         }),
       ]);
-      if (instant.user !== viewerId) {
+      if (notifyOwner) {
         await createNotificationInTransaction(
           instant.user,
           viewerId,
@@ -127,8 +138,8 @@ async function addReaction(
         );
       }
     });
-    if (instant.user !== viewerId) {
-      await dispatchTelegramNotification(instant.user, viewerId, "like");
+    if (notifyOwner) {
+      await dispatchTelegramNotification(instant.user, viewerId, "like", emoji);
     }
     // A fresh reaction counts as seeing the Instant — mark it handled.
     after(() => recordViewIfAbsent(viewerId, instant.$id));
@@ -190,6 +201,47 @@ async function removeReaction(
     }
     // Already gone — treat the delete as idempotent success.
     return { reaction: null, reactions: Math.max(0, instant.likes - 1) };
+  }
+}
+
+function logDigestFailure(error: unknown): void {
+  const detail =
+    error instanceof AppwriteException
+      ? `Appwrite ${error.code}`
+      : error instanceof Error
+        ? error.name
+        : "UnknownError";
+  console.error(`Reaction digest gate failed: ${detail}`);
+}
+
+/**
+ * One reaction ping per Instant per 24h. Returns false when a like ping was
+ * already sent for this Instant within the last day — silent digest, not spam.
+ */
+async function shouldNotifyReaction(
+  ownerId: string,
+  instantId: string,
+): Promise<boolean> {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const result = await getTables().listRows<NotificationRowLite>({
+      databaseId: getDatabaseId(),
+      tableId: "notifications",
+      queries: [
+        Query.equal("recipient", ownerId),
+        Query.equal("instant", instantId),
+        Query.equal("type", "like"),
+        Query.greaterThanEqual("$createdAt", cutoff),
+        Query.limit(1),
+        Query.select(["$id"]),
+      ],
+      total: false,
+    });
+    return result.rows.length === 0;
+  } catch (error) {
+    // Never block a reaction on the notification gate.
+    logDigestFailure(error);
+    return true;
   }
 }
 

@@ -21,6 +21,7 @@ import type { ArchivedInstant } from "@/src/features/instants/archive";
 import { formatInstantDate } from "@/src/features/instants/format-date";
 import { UserAvatar } from "@/app/components/user-avatar";
 import { SeenByStrip } from "@/app/components/seen-by-strip";
+import { setInstantReaction } from "@/src/features/instants/client-api";
 
 type FeedConfig = {
   mode: "feed";
@@ -347,6 +348,18 @@ export function InstantViewer(props: InstantViewerProps) {
             {/* Who has seen this Instant */}
             <SeenByStrip photo={props.photo} />
 
+            {/* React to your own mono — owner privilege */}
+            {props.photo.serverId && (
+              <OwnReactPanel
+                initialReaction={
+                  props.photo.engagement?.viewers.find(
+                    (viewer) => viewer.userId === props.photo.ownerId,
+                  )?.reaction ?? null
+                }
+                serverId={props.photo.serverId}
+              />
+            )}
+
             {/* Meta strip */}
             <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               <span>{formatInstantDate(dateIso)}</span>
@@ -407,6 +420,66 @@ export function InstantViewer(props: InstantViewerProps) {
           </>
         )}
       </footer>
+    </div>
+  );
+}
+
+const OWN_REACTIONS = ["❤️", "🔥", "😍", "👏", "🙌"] as const;
+
+function OwnReactPanel({
+  initialReaction,
+  serverId,
+}: {
+  initialReaction: string | null;
+  serverId: string;
+}) {
+  const [mine, setMine] = useState<string | null>(initialReaction);
+  const [pending, setPending] = useState(false);
+
+  const choose = async (emoji: string) => {
+    if (pending) return;
+    const previous = mine;
+    const next = mine === emoji ? null : emoji;
+    setMine(next);
+    setPending(true);
+    try {
+      await setInstantReaction(serverId, next);
+    } catch {
+      // Roll back — the viewer still closes cleanly otherwise.
+      setMine(previous);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div
+      aria-label="React to your Instant"
+      className="mb-2 flex h-10 items-center gap-2 rounded-xl border border-black/10 bg-black/[0.03] px-3 dark:border-white/10 dark:bg-white/5"
+      role="group"
+    >
+      <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        Your reaction
+      </span>
+      <div className="ml-auto flex items-center gap-1.5">
+        {OWN_REACTIONS.map((emoji) => (
+          <button
+            aria-label={mine === emoji ? `Unlike with ${emoji}` : `React with ${emoji}`}
+            aria-pressed={mine === emoji}
+            className={`grid size-7 place-items-center rounded-full text-base outline-none transition active:scale-90 focus-visible:ring-2 focus-visible:ring-ring ${
+              mine === emoji
+                ? "bg-rose-50 ring-1 ring-rose-300 dark:bg-rose-500/15 dark:ring-rose-500/40"
+                : "hover:bg-black/5 dark:hover:bg-white/10"
+            } disabled:opacity-50`}
+            disabled={pending}
+            key={emoji}
+            onClick={() => void choose(emoji)}
+            type="button"
+          >
+            <span aria-hidden="true">{emoji}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

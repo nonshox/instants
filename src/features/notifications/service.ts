@@ -1,5 +1,5 @@
 import "server-only";
-import { AppwriteException, ID, Query, type Models } from "node-appwrite";
+import { AppwriteException, ID } from "node-appwrite";
 import { after } from "next/server";
 import { getDatabaseId, getTables } from "@/src/features/instants/data";
 import { runTransaction } from "@/src/features/social/data";
@@ -51,7 +51,6 @@ export async function listNotifications(
     getNotificationRows(userId, cursor),
     getBlockedUserIds(userId),
   ]);
-  const unreadCount = await getUnreadCount(userId, blocked);
   const visibleRows = rows.filter((row) => !blocked.has(row.actor));
   const actors = await getNotificationActors([
     ...new Set(visibleRows.map((row) => row.actor)),
@@ -69,15 +68,59 @@ export async function listNotifications(
             instantId: row.instant ?? null,
             createdAt: row.$createdAt,
             read: row.read,
+            count: 1,
+            ids: [row.$id],
           },
         ]
       : [];
   });
+  const grouped = collapseReactionGroups(items);
+  const visibleUnreadCount = grouped
+    .filter((item) => !item.read)
+    .reduce((sum, item) => sum + item.count, 0);
   return {
-    items,
+    items: grouped,
     nextCursor: rows.length === 50 ? rows[rows.length - 1].$id : null,
-    unreadCount,
+    unreadCount: visibleUnreadCount,
   };
+}
+
+const REACTION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Collapse consecutive like notifications from the same actor within a 24h
+ * window into a single grouped row. Keeps the latest createdAt as the
+ * representative time; summed ids let the client mark the whole group read.
+ */
+function collapseReactionGroups(
+  items: NotificationItem[],
+): NotificationItem[] {
+  const output: NotificationItem[] = [];
+  for (const item of items) {
+    if (item.type !== "like") {
+      output.push(item);
+      continue;
+    }
+    const last = output[output.length - 1];
+    const sameActor = last?.type === "like" && last.actorId === item.actorId;
+    const withinWindow =
+      sameActor &&
+      Math.abs(
+        new Date(item.createdAt).getTime() - new Date(last.createdAt).getTime(),
+      ) <= REACTION_WINDOW_MS;
+    if (withinWindow) {
+      output[output.length - 1] = {
+        ...last,
+        count: last.count + 1,
+        ids: [...last.ids, ...item.ids],
+        read: last.read && item.read,
+        instantId: last.instantId ?? item.instantId,
+      };
+      continue;
+    }
+    output.push(item);
+  }
+  return output;
 }
 
 export async function readNotifications(
@@ -106,38 +149,6 @@ export async function readNotifications(
   await markNotificationsRead(userId, ownedRows.map((row) => row.$id));
 }
 
-async function getUnreadCount(
-  userId: string,
-  blocked: Set<string>,
-): Promise<number> {
-  let count = 0;
-  let cursor: string | null = null;
-  while (true) {
-    const result: Models.RowList<NotificationRow> =
-      await getTables().listRows<NotificationRow>({
-        databaseId: getDatabaseId(),
-        tableId: "notifications",
-        queries: [
-          Query.equal("recipient", userId),
-          Query.equal("read", false),
-          Query.limit(100),
-          ...(cursor ? [Query.cursorAfter(cursor)] : []),
-          Query.select(["$id", "actor"]),
-        ],
-        total: false,
-      });
-    count += result.rows.filter((row) => !blocked.has(row.actor)).length;
-    if (result.rows.length < 100) {
-      return count;
-    }
-    const next: string = result.rows[result.rows.length - 1].$id;
-    if (next === cursor) {
-      throw new Error("Unable to continue reading notifications.");
-    }
-    cursor = next;
-  }
-}
-
 export async function createNotification(
   recipient: string,
   actor: string,
@@ -160,6 +171,7 @@ export async function dispatchTelegramNotification(
   recipient: string,
   actor: string,
   type: NotificationType,
+  reactionEmoji?: string,
 ): Promise<void> {
   try {
     after(async () => {
@@ -186,7 +198,10 @@ export async function dispatchTelegramNotification(
           follow_request: `@${username} requested to follow you.`,
           follow_approved: `Your follow request to @${username} was approved.`,
           new_follower: `@${username} started following you.`,
-          like: `@${username} liked your Instant.`,
+          like:
+            reactionEmoji != null
+              ? `@${username} reacted with ${reactionEmoji} to your Instant.`
+              : `@${username} liked your Instant.`,
         }[type];
         await sendTelegramNotification(recipient, message);
       } catch (error) {

@@ -28,4 +28,8 @@ export type NotificationItem = {
   instantId: string | null;
   createdAt: string;
   read: boolean;
+  /** Number of collapsed rows belonging to this group (>=1). */
+  count: number;
+  /** All server row ids in this group (for mark-as-read). */
+  ids: string[];
 };

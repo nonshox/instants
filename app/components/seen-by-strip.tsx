@@ -141,6 +141,17 @@ function ServerStrip({
   });
   const [expanded, setExpanded] = useState(false);
 
+  // Silent background refresh — the owner watches viewers/reactions roll in
+  // live while their Instant is open. Pauses when the tab is hidden.
+  const refresh = useCallback(async () => {
+    try {
+      const value = await fetchInstantViewers(instantId);
+      setViewers({ status: "ready", value });
+    } catch {
+      /* keep the last known list — never churn the UI on transient errors */
+    }
+  }, [instantId]);
+
   const load = useCallback(async () => {
     setViewers({ status: "loading" });
     try {
@@ -165,6 +176,13 @@ function ServerStrip({
     };
   }, [instantId]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [refresh]);
+
   const rows: DisplayViewer[] =
     viewers.status === "ready" ? viewers.value : [];
 
@@ -173,10 +191,19 @@ function ServerStrip({
       {totalLikes > 0 && (
         <div
           aria-label="Reactions"
-          className="flex h-8 items-center gap-2 border-b border-black/5 px-3 text-xs font-medium text-foreground/80 dark:border-white/5"
+          className="flex h-8 items-center justify-between gap-2 border-b border-black/5 px-3 text-xs font-medium text-foreground/80 dark:border-white/5"
         >
-          <span aria-hidden="true">❤️</span>
-          <span className="tabular-nums">{totalLikes}</span>
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden="true">❤️</span>
+            <span className="tabular-nums">{totalLikes}</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
+            <span
+              aria-hidden="true"
+              className="size-1.5 animate-pulse rounded-full bg-emerald-500"
+            />
+            Live
+          </span>
         </div>
       )}
       {viewers.status === "loading" ? (

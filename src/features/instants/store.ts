@@ -29,6 +29,7 @@ type InstantState = {
   feedLoading: boolean;
   loadingMore: boolean;
   uploading: boolean;
+  uploadProgress: number;
   pendingDeleteId: string;
   pendingCaptionId: string;
   pendingLikes: Set<string>;
@@ -67,6 +68,7 @@ const initialState = {
   feedLoading: true,
   loadingMore: false,
   uploading: false,
+  uploadProgress: 0,
   pendingDeleteId: "",
   pendingCaptionId: "",
   pendingLikes: new Set<string>(),
@@ -157,7 +159,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
     const accountId = get().accountId;
     if (!accountId) return null;
 
-    set({ uploading: true, uploadMessage: "", archiveError: "" });
+    set({ uploading: true, uploadProgress: 0, uploadMessage: "", archiveError: "" });
     const localInstant = createLocalInstant(
       accountId,
       file,
@@ -185,6 +187,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
         pendingInstant.image,
         pendingInstant.mimeType,
         pendingInstant.caption,
+        (percent) => set({ uploadProgress: percent }),
       );
       const savedInstant = {
         ...pendingInstant,
@@ -223,7 +226,7 @@ export const useInstantStore = create<InstantState>((set, get) => ({
       });
       return failedInstant;
     } finally {
-      set({ uploading: false });
+      set({ uploading: false, uploadProgress: 0 });
     }
   },
   retryUpload: async (instant) => {

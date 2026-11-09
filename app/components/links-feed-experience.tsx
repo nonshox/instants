@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Check, Heart, RefreshCw, UsersRound } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AnimatePresence,
   motion,
@@ -14,6 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { recordInstantView } from "@/src/features/instants/client-api";
+import { markSeen, toggleMute, useMutedAccounts } from "@/src/features/instants/seen";
 import { useInstantStore } from "@/src/features/instants/store";
 import { formatRelativeTime } from "@/src/features/instants/format-date";
 import type { FeedInstant } from "@/src/features/instants/client-api";
@@ -103,10 +104,16 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
     [],
   );
 
-  const total = feed.length;
-  const topIndex = Math.min(dismissedCount, total);
-  const topInstant = topIndex < total ? feed[topIndex] : null;
-  const visible = feed.slice(topIndex, topIndex + VISIBLE_CARDS);
+  const mutedAccounts = useMutedAccounts();
+  const visibleFeed = useMemo(
+    () => feed.filter((item) => !mutedAccounts.has(item.ownerId)),
+    [feed, mutedAccounts],
+  );
+  // Index math always runs on the visible deck, never the raw store list.
+  const visibleTotal = visibleFeed.length;
+  const topIndex = Math.min(dismissedCount, visibleTotal);
+  const topInstant = topIndex < visibleTotal ? visibleFeed[topIndex] : null;
+  const visible = visibleFeed.slice(topIndex, topIndex + VISIBLE_CARDS);
 
   // Alternating fly-off direction for click/keyboard deals.
   const dealVector = (): ExitVector => {
@@ -117,9 +124,10 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
 
   const dismissTop = useCallback(
     (vector: ExitVector) => {
-      const current = topIndex < total ? feed[topIndex] : null;
+      const current = topIndex < visibleTotal ? visibleFeed[topIndex] : null;
       if (!current) return;
       // Mark as seen — dealt Instants leave the feed for good.
+      markSeen(current.id);
       void recordInstantView(current.id).catch(() => {
         // A missed view marker only means it may reappear on next visit.
       });
@@ -127,11 +135,11 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
       setExitingIds((ids) => new Set(ids).add(current.id));
       setDismissedCount((count) => count + 1);
       // Prefetch the next page when one card from the end is left.
-      if (topIndex + 1 >= total - 1 && hasMore && !loadingMore) {
+      if (topIndex + 1 >= visibleTotal - 1 && hasMore && !loadingMore) {
         void loadFeedPage(nextCursor, true);
       }
     },
-    [feed, hasMore, loadFeedPage, loadingMore, nextCursor, topIndex, total],
+    [visibleFeed, hasMore, loadFeedPage, loadingMore, nextCursor, topIndex, visibleTotal],
   );
 
   const reactTo = useCallback(
@@ -164,7 +172,7 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [dismissTop, topInstant]);
 
-  const deckExhausted = total > 0 && topIndex >= total;
+  const deckExhausted = visibleTotal > 0 && topIndex >= visibleTotal;
   const chosenReaction = topInstant ? topInstant.reaction : null;
 
   return (
@@ -195,9 +203,9 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
         aria-label="Photo deck"
         className="relative mt-2 min-h-0 flex-1 [container-type:size] [touch-action:none]"
       >
-        {loading && total === 0 ? (
+        {loading && visibleTotal === 0 ? (
           <DeckSkeleton />
-        ) : total === 0 ? (
+        ) : visibleTotal === 0 ? (
           <QuietFeed />
         ) : deckExhausted ? (
           <DeckComplete
@@ -222,7 +230,7 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
                       onDismiss={dismissTop}
                       position={position}
                       topIndex={topIndex}
-                      total={total}
+                      total={visibleTotal}
                     />
                   );
                 })}
@@ -276,8 +284,10 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
               ·
             </span>
             <span className="text-[11px] tabular-nums text-muted-foreground">
-              {Math.min(topIndex + 1, total)}/{total}
+              {Math.min(topIndex + 1, visibleTotal)}/{visibleTotal}
             </span>
+            {/* One-tap mute — slides this person out of your deck for good */}
+            <MuteToggle ownerId={topInstant.ownerId} username={topInstant.username} />
           </div>
 
           {/* Reactions — line 1: ordered main trio, line 2: 2 random picks */}
@@ -545,6 +555,102 @@ function DeckCard({
 }
 
 /** Loading placeholder: exact 1:1 match of the card geometry, adapts to any screen. */
+function MuteToggle({ ownerId, username }: { ownerId: string; username: string }) {
+  const mutedAccounts = useMutedAccounts();
+  const muted = mutedAccounts.has(ownerId);
+  const [confirming, setConfirming] = useState(false);
+  const timer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  // Reveal the confirm for a beat — auto-cancel to keep accidental mutes impossible.
+  const startConfirm = () => {
+    setConfirming(true);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setConfirming(false), 4000);
+  };
+  const toggle = () => {
+    toggleMute(ownerId);
+    setConfirming(false);
+    if (timer.current) window.clearTimeout(timer.current);
+  };
+
+  if (muted) {
+    return (
+      <button
+        aria-label={`Show @${username} again in your feed`}
+        className="ml-1 inline-flex h-7 items-center gap-1 rounded-full px-2 text-[10px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={toggle}
+        type="button"
+      >
+        <EyeOffIcon />
+        Muted
+      </button>
+    );
+  }
+
+  if (confirming) {
+    return (
+      <span className="ml-1 inline-flex h-7 items-center gap-1 rounded-full bg-muted px-2 text-[10px] font-medium">
+        <button
+          aria-label={`Confirm hiding @${username} from your feed`}
+          className="inline-flex h-5 items-center gap-1 rounded-full text-destructive outline-none transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={toggle}
+          type="button"
+        >
+          Hide
+        </button>
+        <button
+          aria-label="Cancel"
+          className="inline-flex h-5 items-center text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => {
+            setConfirming(false);
+            if (timer.current) window.clearTimeout(timer.current);
+          }}
+          type="button"
+        >
+          ×
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      aria-label={`Hide @${username} from your feed`}
+      className="ml-1 grid size-7 place-items-center rounded-full text-muted-foreground outline-none transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={startConfirm}
+      type="button"
+    >
+      <EyeOffIcon />
+    </button>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.8}
+      viewBox="0 0 24 24"
+    >
+      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+      <path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c5 0 9 4.5 9 8.5 0 .93-.17 1.82-.47 2.65M6.61 6.61C4.62 8 3.17 10 3 13.5c.53 3.2 3.27 6 9 6 1.9 0 3.6-.51 5.04-1.38" />
+      <line x1="2" x2="22" y1="2" y2="22" />
+    </svg>
+  );
+}
+
 function DeckSkeleton() {
   return (
     <div
