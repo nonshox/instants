@@ -91,19 +91,24 @@
 
 html,
 body {
-  min-height: 100%;
+  /* Lock the document to the visible viewport — every screen flexes
+     to whatever chrome the browser takes; the document never scrolls. */
+  height: 100%;
+  overscroll-behavior: none;
 }
 
 html {
   overflow-x: clip;
+  overflow-y: hidden;
   scrollbar-color: color-mix(in oklch, var(--muted-foreground) 38%, transparent)
     transparent;
   scrollbar-width: thin;
 }
 
 body {
-  min-height: 100dvh;
+  height: 100%;
   margin: 0;
+  overflow: clip;
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 

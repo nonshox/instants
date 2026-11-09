@@ -193,10 +193,10 @@ export function LinksFeedExperience({ accountId }: { accountId: string }) {
       {/* Stage — no panning anywhere in the deck, so the page never scrolls */}
       <div
         aria-label="Photo deck"
-        className="relative mt-2 min-h-0 flex-1 [touch-action:none]"
+        className="relative mt-2 min-h-0 flex-1 [container-type:size] [touch-action:none]"
       >
         {loading && total === 0 ? (
-          ""
+          <DeckSkeleton />
         ) : total === 0 ? (
           <QuietFeed />
         ) : deckExhausted ? (
@@ -499,7 +499,7 @@ function DeckCard({
               ? `Photo by @${instant.username}, ${topIndex + 1} of ${total}. Activate for next image.`
               : undefined
           }
-          className={`relative h-full aspect-square max-w-full overflow-hidden rounded-[2rem] bg-muted ${CARD_SHADOW} ${
+          className={`relative size-[86cqmin] overflow-hidden rounded-[2rem] bg-muted ${CARD_SHADOW} ${
             isTop ? "cursor-pointer" : ""
           }`}
           onKeyDown={
@@ -541,6 +541,21 @@ function DeckCard({
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+/** Loading placeholder: exact 1:1 match of the card geometry, adapts to any screen. */
+function DeckSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      aria-label="Loading feed"
+      className="absolute inset-0 grid place-items-center"
+    >
+      <div
+        className={`aspect-square size-[86cqmin] animate-pulse rounded-[2rem] bg-muted/60 ${CARD_SHADOW}`}
+      />
+    </div>
   );
 }
 
